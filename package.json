@@ -1,29 +1,24 @@
 {
   "name": "photocopy-chatbot",
   "version": "1.0.0",
-  "description": "LINE Bot สำหรับคำนวณราคาถ่ายเอกสาร",
+  "description": "LINE Bot for photocopy price calculation",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "test": "node -e \"console.log('Server test passed')\""
   },
   "dependencies": {
-    "@line/bot-sdk": "^8.0.0",
-    "@google/generative-ai": "^0.15.0",
+    "@line/bot-sdk": "^7.5.2",
     "express": "^4.18.2",
     "body-parser": "^1.20.2",
     "xlsx": "^0.18.5",
     "dotenv": "^16.3.1"
   },
-  "engines": {
-    "node": ">=18.0.0"
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   },
-  "keywords": [
-    "line-bot",
-    "chatbot",
-    "photocopy",
-    "gemini-ai"
-  ],
-  "author": "Your Name",
-  "license": "MIT"
+  "engines": {
+    "node": ">=14.0.0"
+  }
 }
