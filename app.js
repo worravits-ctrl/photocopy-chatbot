@@ -1,16 +1,9 @@
-require('dotenv').config(); // เพิ่มบรรทัดนี้เพื่อโหลด .env file
+require('dotenv').config();
 
 const express = require('express');
 const line = require('@line/bot-sdk');
-const XLSX = require('xlsx');
-const path = require('path');
-const bodyParser = require('body-parser');
 
 const app = express();
-
-// ใช้ body parser เฉพาะ routes ที่ไม่ใช่ webhook
-app.use('/chat', bodyParser.json());
-app.use('/chat', bodyParser.urlencoded({ extended: true }));
 
 // Environment Variables
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -22,7 +15,7 @@ console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? 'Set ✅' : 'No
 console.log('- LINE_CHANNEL_SECRET:', channelSecret ? 'Set ✅' : 'Not set ❌');
 console.log('- PORT:', port);
 
-// ตั้งค่า LINE Bot (เฉพาะเมื่อมี token จริง)
+// ตั้งค่า LINE Bot
 let client;
 let lineConfig;
 if (channelAccessToken && channelSecret) {
@@ -48,8 +41,6 @@ const priceData = {
     'A3_Color_Double': 8
 };
 
-console.log('Price data loaded:', Object.keys(priceData).length, 'entries ✅');
-
 // ฟังก์ชันคำนวณราคา
 function calculatePrice(paperSize, color, sides, pages) {
     const key = `${paperSize}_${color}_${sides}`;
@@ -71,7 +62,6 @@ function calculatePrice(paperSize, color, sides, pages) {
 function parseMessage(message) {
     const text = message.toLowerCase();
     
-    // ถ้าเป็นคำทักทาย
     if (text.includes('สวัสดี') || text.includes('hello') || text.includes('hi')) {
         return {
             type: 'greeting',
@@ -79,7 +69,6 @@ function parseMessage(message) {
         };
     }
     
-    // จับราคา - pattern ใหม่ที่ง่ายขึ้น
     const patterns = [
         /(\w*a4\w*).*?(ขาวดำ|สี|bw|color|black|white).*?(หน้าเดียว|สองหน้า|หน้าหลัง|single|double|\d+\s*หน้า|\bหน้า\b).*?(\d+)/i,
         /(\w*a3\w*).*?(ขาวดำ|สี|bw|color|black|white).*?(หน้าเดียว|สองหน้า|หน้าหลัง|single|double|\d+\s*หน้า|\bหน้า\b).*?(\d+)/i,
@@ -95,23 +84,19 @@ function parseMessage(message) {
             let sides = 'Single';
             let pages = 0;
             
-            // หา paper size
             for (let part of match) {
                 if (part && part.toLowerCase().includes('a4')) paperSize = 'A4';
                 if (part && part.toLowerCase().includes('a3')) paperSize = 'A3';
             }
             
-            // หา color
             for (let part of match) {
                 if (part && (part.includes('สี') || part.toLowerCase().includes('color'))) color = 'Color';
             }
             
-            // หา sides
             for (let part of match) {
                 if (part && (part.includes('สอง') || part.includes('หลัง') || part.toLowerCase().includes('double'))) sides = 'Double';
             }
             
-            // หา pages
             for (let part of match) {
                 if (part && /^\d+$/.test(part)) {
                     pages = parseInt(part);
@@ -129,23 +114,13 @@ function parseMessage(message) {
         }
     }
     
-    // ถ้าไม่จับได้
     return {
         type: 'help',
         response: '📝 ไม่เข้าใจคำถาม กรุณาถามในรูปแบบ:\n\n"A4 ขาวดำ หน้าเดียว 50 หน้า"\n"A3 สี สองหน้า 20 หน้า"\n\n💰 ตารางราคา:\n• A4 ขาวดำ หน้าเดียว: 0.5 บาท/หน้า\n• A4 ขาวดำ สองหน้า: 1 บาท/หน้า\n• A4 สี หน้าเดียว: 2 บาท/หน้า\n• A4 สี สองหน้า: 4 บาท/หน้า\n• A3 ขาวดำ หน้าเดียว: 1 บาท/หน้า\n• A3 ขาวดำ สองหน้า: 2 บาท/หน้า\n• A3 สี หน้าเดียว: 4 บาท/หน้า\n• A3 สี สองหน้า: 8 บาท/หน้า'
     };
 }
 
-// เพิ่ม Health Check endpoint
-app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'OK', 
-        timestamp: new Date().toISOString(),
-        lineBot: client ? 'Connected' : 'Disconnected'
-    });
-});
-
-// หน้าแรกของเว็บไซต์
+// หน้าแรก
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
@@ -219,99 +194,88 @@ app.get('/', (req, res) => {
     `);
 });
 
-// API สำหรับแชทบนเว็บ
-app.post('/chat', bodyParser.json(), async (req, res) => {
-    console.log('Received message:', req.body.message);
+// Health check
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        lineBot: client ? 'Connected' : 'Disconnected'
+    });
+});
+
+// Chat API - ใช้ JSON parser เฉพาะ endpoint นี้
+app.post('/chat', express.json(), (req, res) => {
+    console.log('Received web message:', req.body.message);
     const result = parseMessage(req.body.message);
-    console.log('Response:', result.response);
+    console.log('Web response:', result.response);
     res.json({ reply: result.response });
 });
 
-// Webhook สำหรับ LINE - แก้ไขปัญหา body parser
+// LINE Webhook - ใช้ LINE middleware โดยไม่ผ่าน JSON parser ของ Express
 if (client && lineConfig) {
     app.post('/webhook', line.middleware(lineConfig), (req, res) => {
-        console.log('✅ Webhook middleware passed, processing events...');
+        console.log('🎯 LINE Webhook received successfully!');
         
-        // ตรวจสอบว่ามี events หรือไม่
         if (!req.body.events || req.body.events.length === 0) {
-            console.log('No events in webhook');
-            return res.status(200).json({ message: 'No events to process' });
+            return res.status(200).json({ message: 'No events' });
         }
 
-        Promise
-            .all(req.body.events.map(handleEvent))
-            .then((result) => {
-                console.log('Events processed successfully:', result.length, 'events');
-                res.status(200).json({ success: true, processed: result.length });
-            })
+        Promise.all(req.body.events.map(handleEvent))
+            .then(() => res.status(200).json({ success: true }))
             .catch((err) => {
-                console.error('Error processing events:', err);
-                res.status(500).json({ error: 'Internal server error' });
+                console.error('LINE Event error:', err);
+                res.status(500).json({ error: 'Processing failed' });
             });
     });
 
     async function handleEvent(event) {
-        console.log('Handling event:', event.type);
+        console.log('Processing LINE event:', event.type);
         
         if (event.type !== 'message' || event.message.type !== 'text') {
-            console.log('Event ignored - not a text message');
-            return Promise.resolve(null);
+            return null;
         }
 
-        console.log('Processing message:', event.message.text);
+        console.log('LINE message:', event.message.text);
         const result = parseMessage(event.message.text);
-        
+
         try {
-            const reply = await client.replyMessage(event.replyToken, {
+            await client.replyMessage(event.replyToken, {
                 type: 'text',
                 text: result.response
             });
-            console.log('Reply sent successfully');
-            return reply;
+            console.log('✅ Reply sent to LINE');
         } catch (error) {
-            console.error('Error sending reply:', error);
+            console.error('❌ LINE reply error:', error);
             throw error;
         }
     }
 } else {
-    // สร้าง mock webhook endpoint เมื่อไม่มี LINE credentials
-    app.post('/webhook', (req, res) => {
-        console.log('Mock webhook received (no LINE credentials)');
-        res.status(200).json({ message: 'Webhook received but LINE not configured' });
+    app.post('/webhook', express.json(), (req, res) => {
+        res.status(200).json({ message: 'LINE not configured' });
     });
 }
 
-// Error handling middleware
+// 404 handler
+app.use((req, res) => {
+    if (req.originalUrl.includes('favicon.ico')) {
+        return res.status(204).end();
+    }
+    console.log('404:', req.originalUrl);
+    res.status(404).json({ error: 'Not found' });
+});
+
+// Error handler
 app.use((error, req, res, next) => {
     console.error('Express error:', error);
-    res.status(500).json({ error: 'Something went wrong!' });
+    res.status(500).json({ error: 'Server error' });
 });
 
-// 404 handler - ยกเว้น favicon.ico และไฟล์ static
-app.use((req, res, next) => {
-    // ไม่ log favicon.ico และไฟล์ static ที่ไม่สำคัญ
-    if (req.originalUrl.includes('favicon.ico') || 
-        req.originalUrl.includes('.css') || 
-        req.originalUrl.includes('.js') ||
-        req.originalUrl.includes('.png') ||
-        req.originalUrl.includes('.ico')) {
-        return res.status(204).end(); // No Content
-    }
-    console.log('404 - Route not found:', req.originalUrl);
-    res.status(404).json({ error: 'Route not found: ' + req.originalUrl });
-});
-
-// เริ่มเซิร์ฟเวอร์
+// Start server
 app.listen(port, () => {
-    console.log(`\n🚀 Server is running on port ${port}`);
-    console.log('🌐 Local URL: http://localhost:' + port);
-    console.log('\nService Status:');
-    console.log('- Web Interface: ✅ Ready');
-    console.log('- Health Check: ✅ Ready (/health)');
-    console.log('- LINE Bot:', client ? '✅ Ready' : '⚠️  Disabled (no credentials)');
-    console.log('- Price Calculator: ✅ Ready');
-    console.log('- Webhook Endpoint: ✅ Ready (/webhook)');
-    console.log('\n📋 Required Environment Variables:');
-    console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? '✅' : '❌');
-    console.log('- LINE_CHANNEL_SECRET:', channelSecret ? '✅' : '❌');
+    console.log(`\n🚀 Server running on port ${port}`);
+    console.log('🌐 URL: https://photocopy-chatbot.onrender.com');
+    console.log('\n📊 Status:');
+    console.log('- Web Interface: ✅');
+    console.log('- LINE Bot:', client ? '✅ Ready' : '⚠️ Disabled');
+    console.log('- Webhook: ✅ /webhook');
 });
