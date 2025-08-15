@@ -1,3 +1,5 @@
+require('dotenv').config(); // เพิ่มบรรทัดนี้เพื่อโหลด .env file
+
 const express = require('express');
 const line = require('@line/bot-sdk');
 const XLSX = require('xlsx');
@@ -9,26 +11,27 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Environment Variables
-const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || 'dummy_token';
-const channelSecret = process.env.LINE_CHANNEL_SECRET || 'dummy_secret';
+const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+const channelSecret = process.env.LINE_CHANNEL_SECRET;
 const port = process.env.PORT || 3000;
 
 console.log('Environment check:');
-console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? 'Set' : 'Not set');
-console.log('- LINE_CHANNEL_SECRET:', channelSecret ? 'Set' : 'Not set');
+console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? 'Set ✅' : 'Not set ❌');
+console.log('- LINE_CHANNEL_SECRET:', channelSecret ? 'Set ✅' : 'Not set ❌');
 console.log('- PORT:', port);
 
 // ตั้งค่า LINE Bot (เฉพาะเมื่อมี token จริง)
 let client;
-if (channelAccessToken !== 'dummy_token') {
-    const config = {
+let lineConfig;
+if (channelAccessToken && channelSecret) {
+    lineConfig = {
         channelAccessToken: channelAccessToken,
         channelSecret: channelSecret,
     };
-    client = new line.Client(config);
-    console.log('LINE Bot client initialized');
+    client = new line.Client(lineConfig);
+    console.log('LINE Bot client initialized ✅');
 } else {
-    console.log('LINE Bot client skipped - using dummy token');
+    console.log('LINE Bot client skipped ⚠️ - Missing credentials');
 }
 
 // ข้อมูลราคา
@@ -43,7 +46,7 @@ const priceData = {
     'A3_Color_Double': 8
 };
 
-console.log('Using default price data:', Object.keys(priceData).length, 'entries');
+console.log('Price data loaded:', Object.keys(priceData).length, 'entries ✅');
 
 // ฟังก์ชันคำนวณราคา
 function calculatePrice(paperSize, color, sides, pages) {
@@ -131,6 +134,15 @@ function parseMessage(message) {
     };
 }
 
+// เพิ่ม Health Check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({ 
+        status: 'OK', 
+        timestamp: new Date().toISOString(),
+        lineBot: client ? 'Connected' : 'Disconnected'
+    });
+});
+
 // หน้าแรกของเว็บไซต์
 app.get('/', (req, res) => {
     res.send(`
@@ -147,10 +159,16 @@ app.get('/', (req, res) => {
             .bot { background-color: #f8f9fa; }
             input[type="text"] { width: 70%; padding: 10px; }
             button { width: 25%; padding: 10px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+            .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+            .connected { background-color: #d4edda; color: #155724; }
+            .disconnected { background-color: #f8d7da; color: #721c24; }
         </style>
     </head>
     <body>
         <h1>🖨️ ระบบคำนวณราคาถ่ายเอกสาร</h1>
+        <div class="status ${client ? 'connected' : 'disconnected'}">
+            LINE Bot: ${client ? '✅ เชื่อมต่อแล้ว' : '⚠️ ไม่ได้เชื่อมต่อ'}
+        </div>
         <div class="chat-container" id="chatContainer">
             <div class="message bot">สวัสดีค่ะ! ยินดีให้บริการคำนวณราคาถ่ายเอกสาร
 ลองถามเช่น:
@@ -207,39 +225,83 @@ app.post('/chat', async (req, res) => {
     res.json({ reply: result.response });
 });
 
-// Webhook สำหรับ LINE
-if (client) {
-    app.post('/webhook', line.middleware({
-        channelSecret: channelSecret
-    }), (req, res) => {
+// Webhook สำหรับ LINE - ปรับปรุงการจัดการ error
+if (client && lineConfig) {
+    app.post('/webhook', line.middleware(lineConfig), (req, res) => {
+        console.log('Webhook received:', req.body);
+        
+        // ตรวจสอบว่ามี events หรือไม่
+        if (!req.body.events || req.body.events.length === 0) {
+            console.log('No events in webhook');
+            return res.status(200).json({ message: 'No events to process' });
+        }
+
         Promise
             .all(req.body.events.map(handleEvent))
-            .then((result) => res.json(result))
+            .then((result) => {
+                console.log('Events processed successfully:', result);
+                res.status(200).json(result);
+            })
             .catch((err) => {
-                console.error(err);
-                res.status(500).end();
+                console.error('Error processing events:', err);
+                res.status(500).json({ error: 'Internal server error' });
             });
     });
 
     async function handleEvent(event) {
+        console.log('Handling event:', event.type);
+        
         if (event.type !== 'message' || event.message.type !== 'text') {
+            console.log('Event ignored - not a text message');
             return Promise.resolve(null);
         }
 
+        console.log('Processing message:', event.message.text);
         const result = parseMessage(event.message.text);
         
-        return client.replyMessage(event.replyToken, {
-            type: 'text',
-            text: result.response
-        });
+        try {
+            const reply = await client.replyMessage(event.replyToken, {
+                type: 'text',
+                text: result.response
+            });
+            console.log('Reply sent successfully');
+            return reply;
+        } catch (error) {
+            console.error('Error sending reply:', error);
+            throw error;
+        }
     }
+} else {
+    // สร้าง mock webhook endpoint เมื่อไม่มี LINE credentials
+    app.post('/webhook', (req, res) => {
+        console.log('Mock webhook received (no LINE credentials)');
+        res.status(200).json({ message: 'Webhook received but LINE not configured' });
+    });
 }
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+    console.error('Express error:', error);
+    res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+    console.log('404 - Route not found:', req.originalUrl);
+    res.status(404).json({ error: 'Route not found' });
+});
 
 // เริ่มเซิร์ฟเวอร์
 app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-    console.log('Service Status:');
+    console.log(`\n🚀 Server is running on port ${port}`);
+    console.log('🌐 Local URL: http://localhost:' + port);
+    console.log('\nService Status:');
     console.log('- Web Interface: ✅ Ready');
-    console.log('- LINE Bot:', client ? '✅ Ready' : '⚠️  Disabled (no token)');
+    console.log('- Health Check: ✅ Ready (/health)');
+    console.log('- LINE Bot:', client ? '✅ Ready' : '⚠️  Disabled (no credentials)');
     console.log('- Price Calculator: ✅ Ready');
+    console.log('- Webhook Endpoint: ✅ Ready (/webhook)');
+    console.log('\n📋 Required Environment Variables:');
+    console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? '✅' : '❌');
+    console.log('- LINE_CHANNEL_SECRET:', channelSecret ? '✅' : '❌');
 });
