@@ -285,10 +285,18 @@ app.use((error, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
+// 404 handler - ยกเว้น favicon.ico และไฟล์ static
+app.use((req, res, next) => {
+    // ไม่ log favicon.ico และไฟล์ static ที่ไม่สำคัญ
+    if (req.originalUrl.includes('favicon.ico') || 
+        req.originalUrl.includes('.css') || 
+        req.originalUrl.includes('.js') ||
+        req.originalUrl.includes('.png') ||
+        req.originalUrl.includes('.ico')) {
+        return res.status(204).end(); // No Content
+    }
     console.log('404 - Route not found:', req.originalUrl);
-    res.status(404).json({ error: 'Route not found' });
+    res.status(404).json({ error: 'Route not found: ' + req.originalUrl });
 });
 
 // เริ่มเซิร์ฟเวอร์
