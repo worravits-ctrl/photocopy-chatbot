@@ -96,7 +96,7 @@ async function getGeminiResponse(question) {
     }
     
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
         
         const context = `คุณคือผู้ช่วยของร้านถ่ายเอกสาร ข้อมูลราคาที่มี:
 ${Object.keys(priceData).map(key => {
