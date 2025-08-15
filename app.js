@@ -7,8 +7,10 @@ const path = require('path');
 const bodyParser = require('body-parser');
 
 const app = express();
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+
+// ใช้ body parser เฉพาะ routes ที่ไม่ใช่ webhook
+app.use('/chat', bodyParser.json());
+app.use('/chat', bodyParser.urlencoded({ extended: true }));
 
 // Environment Variables
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
@@ -218,17 +220,17 @@ app.get('/', (req, res) => {
 });
 
 // API สำหรับแชทบนเว็บ
-app.post('/chat', async (req, res) => {
+app.post('/chat', bodyParser.json(), async (req, res) => {
     console.log('Received message:', req.body.message);
     const result = parseMessage(req.body.message);
     console.log('Response:', result.response);
     res.json({ reply: result.response });
 });
 
-// Webhook สำหรับ LINE - ปรับปรุงการจัดการ error
+// Webhook สำหรับ LINE - แก้ไขปัญหา body parser
 if (client && lineConfig) {
     app.post('/webhook', line.middleware(lineConfig), (req, res) => {
-        console.log('Webhook received:', req.body);
+        console.log('✅ Webhook middleware passed, processing events...');
         
         // ตรวจสอบว่ามี events หรือไม่
         if (!req.body.events || req.body.events.length === 0) {
@@ -239,8 +241,8 @@ if (client && lineConfig) {
         Promise
             .all(req.body.events.map(handleEvent))
             .then((result) => {
-                console.log('Events processed successfully:', result);
-                res.status(200).json(result);
+                console.log('Events processed successfully:', result.length, 'events');
+                res.status(200).json({ success: true, processed: result.length });
             })
             .catch((err) => {
                 console.error('Error processing events:', err);
