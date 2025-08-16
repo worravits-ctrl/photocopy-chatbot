@@ -1,24 +1,36 @@
 {
-  "name": "photocopy-chatbot",
-  "version": "1.0.0",
-  "description": "LINE Bot for photocopy price calculation",
+  "name": "photocopy-chatbot-ai",
+  "version": "2.0.0",
+  "description": "LINE Bot สำหรับคำนวณราคาถ่ายเอกสาร พร้อม Gemini AI Assistant",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "test": "node -e \"console.log('Server test passed')\""
+    "test": "node -e \"console.log('Server test passed')\"",
+    "local": "npm run dev"
   },
   "dependencies": {
     "@line/bot-sdk": "^7.5.2",
     "express": "^4.18.2",
-    "body-parser": "^1.20.2",
     "xlsx": "^0.18.5",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
   },
   "engines": {
-    "node": ">=14.0.0"
-  }
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "line-bot",
+    "gemini-ai",
+    "photocopy",
+    "price-calculator",
+    "chatbot",
+    "ai-assistant",
+    "thailand"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
 }
