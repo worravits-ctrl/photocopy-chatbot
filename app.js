@@ -304,7 +304,7 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>เก่งปริ้นท์ - Chatbot</title>
+        <title>IT-Business - Chatbot</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             
@@ -497,7 +497,7 @@ app.get('/', (req, res) => {
             </div>
             
             <div class="chat-container" id="chat">
-                <div class="message bot">สวัสดีค่ะ! ยินดีต้อนรับสู่ เก่งปริ้นท์ ค่ะ<br>มีอะไรให้ช่วยไหมคะ?</div>
+                <div class="message bot">สวัสดีค่ะ! ยินดีต้อนรับสู่ It-Business ค่ะ<br>มีอะไรให้ช่วยไหมคะ?</div>
             </div>
             
             <div class="input-group">
