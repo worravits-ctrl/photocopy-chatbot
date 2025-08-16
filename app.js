@@ -65,6 +65,12 @@ function loadPricesFromExcel() {
             const worksheet = workbook.Sheets[sheetName];
             priceList = XLSX.utils.sheet_to_json(worksheet);
             console.log('✅ Loaded prices from Excel:', priceList.length, 'items');
+            
+            // Debug: แสดงข้อมูลตัวอย่าง
+            if (priceList.length > 0) {
+                console.log('Sample data:', priceList[0]);
+                console.log('Available columns:', Object.keys(priceList[0]));
+            }
         }
 
         // Convert to object for faster lookup
@@ -104,7 +110,6 @@ function getBusinessContext() {
 - เจ้าของร้าน: พี่เวฟ
 - พ่อเจ้าของร้าน: ลุงเดียร์
 - ใกล้โรงแรม: Thehub
-
 ราคาถ่ายเอกสาร:
 ${priceText}
 
@@ -145,7 +150,7 @@ function calculatePrice(paperSize, colorType, printType, sheets) {
         
         const finalPrice = totalPrice - discount;
         
-        let response = 'คำนวณราคา:\n';
+        let response = 'คำนวดราคา:\n';
         response += `- ${paperSize} ${colorType} ${printType}\n`;
         response += `- จำนวน: ${sheets} แผ่น\n`;
         response += `- ราคา: ${sheets} × ${pricePerSheet} = ${totalPrice.toFixed(2)} บาท\n`;
@@ -275,23 +280,45 @@ async function parseMessage(message) {
     };
 }
 
-// Generate price table
+// Generate price table - แก้ไขส่วนนี้
 function generatePriceTable() {
-    let table = 'ตารางราคาถ่ายเอกสาร\n\n';
+    if (!priceList || priceList.length === 0) {
+        return 'ไม่พบข้อมูลราคา กรุณาติดต่อเจ้าหน้าที่ค่ะ';
+    }
+
+    let table = '📋 ตารางราคาถ่ายเอกสาร\n\n';
     
-    const sizes = ['A3', 'A4', 'A5'];
-    sizes.forEach(size => {
-        const items = priceList.filter(item => item.ขนาด === size);
-        if (items.length > 0) {
-            table += `${size}:\n`;
-            items.forEach(item => {
-                table += `• ${item.ประเภท} ${item.รูปแบบ}: ${item.ราคา} บาท\n`;
-            });
-            table += '\n';
+    // จัดเรียงข้อมูลตาม ขนาด -> ประเภท -> รูปแบบ
+    const sortedData = priceList.sort((a, b) => {
+        if (a.ขนาด !== b.ขนาด) {
+            return a.ขนาด.localeCompare(b.ขนาด);
         }
+        if (a.ประเภท !== b.ประเภท) {
+            return a.ประเภท.localeCompare(b.ประเภท);
+        }
+        return a.รูปแบบ.localeCompare(b.รูปแบบ);
     });
     
-    table += 'โปรโมชั่น:\n';
+    let currentSize = '';
+    
+    sortedData.forEach(item => {
+        const size = item.ขนาด;
+        const type = item.ประเภท;
+        const format = item.รูปแบบ;
+        const price = item.ราคา;
+        
+        // แสดงขนาดกระดาษใหม่
+        if (size !== currentSize) {
+            if (currentSize !== '') table += '\n';
+            table += `${size}:\n`;
+            currentSize = size;
+        }
+        
+        table += `• ${type} ${format}: ${price} บาท\n`;
+    });
+
+    // เพิ่มโปรโมชั่น
+    table += '\n🎉 โปรโมชั่น:\n';
     table += '• 100+ แผ่น ลด 10%\n';
     table += '• 500+ แผ่น ลด 15%\n';
     table += '• 1000+ แผ่น ลด 20%';
@@ -307,7 +334,7 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>IT-Business - Chatbot</title>
+        <title>It-Bsiness - Chatbot</title>
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             
