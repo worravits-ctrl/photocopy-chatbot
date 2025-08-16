@@ -11,14 +11,16 @@ const app = express();
 // Environment Variables
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const channelSecret = process.env.LINE_CHANNEL_SECRET;
+const geminiApiKey = process.env.GEMINI_API_KEY;
 const port = process.env.PORT || 3000;
 
 console.log('Environment check:');
-console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? `Set ✅ (${channelAccessToken.substring(0, 20)}...)` : 'Not set ❌');
-console.log('- LINE_CHANNEL_SECRET:', channelSecret ? `Set ✅ (${channelSecret.substring(0, 10)}...)` : 'Not set ❌');
+console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? 'Set ✅' : 'Not set ❌');
+console.log('- LINE_CHANNEL_SECRET:', channelSecret ? 'Set ✅' : 'Not set ❌');
+console.log('- GEMINI_API_KEY:', geminiApiKey ? 'Set ✅' : 'Not set ❌');
 console.log('- PORT:', port);
 
-// ตั้งค่า LINE Bot
+// LINE Bot Setup
 let client;
 let lineConfig;
 if (channelAccessToken && channelSecret) {
@@ -32,479 +34,587 @@ if (channelAccessToken && channelSecret) {
     console.log('LINE Bot client skipped ⚠️ - Missing credentials');
 }
 
-// ข้อมูลราคา (default ถ้าไม่มี Excel)
-let priceData = {
-    'A4_BW_Single': 0.5,
-    'A4_BW_Double': 1,
-    'A4_Color_Single': 2,
-    'A4_Color_Double': 4,
-    'A3_BW_Single': 1,
-    'A3_BW_Double': 2,
-    'A3_Color_Single': 4,
-    'A3_Color_Double': 8
-};
+// Price data storage
+let priceData = {};
+let priceList = [];
 
-// ฟังก์ชันโหลดราคาจาก Excel
+// Load prices from Excel
 function loadPricesFromExcel() {
-    const excelFiles = ['prices.xlsx', 'ราคา.xlsx', 'price-list.xlsx'];
-    
-    for (const fileName of excelFiles) {
-        const filePath = path.join(__dirname, fileName);
+    try {
+        const filePath = path.join(__dirname, 'prices.xlsx');
         
-        if (fs.existsSync(filePath)) {
-            try {
-                console.log(`📊 กำลังโหลดราคาจาก: ${fileName}`);
-                
-                const workbook = XLSX.readFile(filePath);
-                const sheetName = workbook.SheetNames[0]; // ใช้ sheet แรก
-                const worksheet = workbook.Sheets[sheetName];
-                const data = XLSX.utils.sheet_to_json(worksheet);
-                
-                console.log(`📋 พบข้อมูล ${data.length} รายการ`);
-                
-                // แปลงข้อมูลจาก Excel เป็น priceData object
-                const newPriceData = {};
-                
-                data.forEach((row, index) => {
-                    try {
-                        // รองรับหลายรูปแบบ column names
-                        const paperSize = row['ขนาด'] || row['Size'] || row['paper_size'] || row['Paper Size'] || 'A4';
-                        const color = row['สี'] || row['Color'] || row['color'] || row['Type'] || 'BW';
-                        const sides = row['หน้า'] || row['Sides'] || row['sides'] || row['Page'] || 'Single';
-                        const price = parseFloat(row['ราคา'] || row['Price'] || row['price'] || row['ราคาต่อแผ่น'] || 0);
-                        
-                        if (price > 0) {
-                            // แปลงเป็นรูปแบบที่ใช้ในโค้ด
-                            const sizeKey = paperSize.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                            const colorKey = normalizeColor(color);
-                            const sidesKey = normalizeSides(sides);
-                            
-                            const key = `${sizeKey}_${colorKey}_${sidesKey}`;
-                            newPriceData[key] = price;
-                            
-                            console.log(`   ✅ ${key}: ${price} บาท`);
-                        }
-                    } catch (error) {
-                        console.log(`   ⚠️ ข้ามแถวที่ ${index + 1}: ${error.message}`);
-                    }
-                });
-                
-                if (Object.keys(newPriceData).length > 0) {
-                    priceData = { ...priceData, ...newPriceData };
-                    console.log(`✅ โหลดราคาจาก Excel สำเร็จ: ${Object.keys(newPriceData).length} รายการ`);
-                    return true;
-                }
-                
-            } catch (error) {
-                console.log(`❌ ไม่สามารถอ่าน ${fileName}: ${error.message}`);
-            }
+        if (!fs.existsSync(filePath)) {
+            console.log('⚠️ prices.xlsx not found - using default prices');
+            priceList = [
+                { ขนาด: 'A4', ประเภท: 'ขาวดำ', รูปแบบ: 'หน้าเดียว', ราคา: 2 },
+                { ขนาด: 'A4', ประเภท: 'ขาวดำ', รูปแบบ: 'หน้าหลัง', ราคา: 2.5 },
+                { ขนาด: 'A4', ประเภท: 'สี', รูปแบบ: 'หน้าเดียว', ราคา: 3 },
+                { ขนาด: 'A4', ประเภท: 'สี', รูปแบบ: 'หน้าหลัง', ราคา: 5 },
+                { ขนาด: 'A3', ประเภท: 'ขาวดำ', รูปแบบ: 'หน้าเดียว', ราคา: 5 },
+                { ขนาด: 'A3', ประเภท: 'ขาวดำ', รูปแบบ: 'หน้าหลัง', ราคา: 8 },
+                { ขนาด: 'A3', ประเภท: 'สี', รูปแบบ: 'หน้าเดียว', ราคา: 12 },
+                { ขนาด: 'A3', ประเภท: 'สี', รูปแบบ: 'หน้าหลัง', ราคา: 20 },
+                { ขนาด: 'A5', ประเภท: 'ขาวดำ', รูปแบบ: 'หน้าเดียว', ราคา: 0.5 },
+                { ขนาด: 'A5', ประเภท: 'ขาวดำ', รูปแบบ: 'หน้าหลัง', ราคา: 1 },
+                { ขนาด: 'A5', ประเภท: 'สี', รูปแบบ: 'หน้าเดียว', ราคา: 3 },
+                { ขนาด: 'A5', ประเภท: 'สี', รูปแบบ: 'หน้าหลัง', ราคา: 5 }
+            ];
+        } else {
+            const workbook = XLSX.readFile(filePath);
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            priceList = XLSX.utils.sheet_to_json(worksheet);
+            console.log('✅ Loaded prices from Excel:', priceList.length, 'items');
         }
+
+        // Convert to object for faster lookup
+        priceData = {};
+        priceList.forEach(item => {
+            const key = `${item.ขนาด}_${item.ประเภท}_${item.รูปแบบ}`;
+            priceData[key] = item.ราคา;
+        });
+
+        console.log('Price data loaded:', Object.keys(priceData).length, 'entries');
+        return true;
+
+    } catch (error) {
+        console.error('❌ Error loading Excel file:', error);
+        return false;
     }
-    
-    console.log('📝 ใช้ราคา default');
-    return false;
 }
 
-// ฟังก์ชันแปลงสีให้เป็นมาตรฐาน
-function normalizeColor(color) {
-    const colorStr = color.toString().toLowerCase();
-    if (colorStr.includes('สี') || colorStr.includes('color') || colorStr.includes('c')) {
-        return 'Color';
-    }
-    return 'BW';
-}
-
-// ฟังก์ชันแปลงหน้าให้เป็นมาตรฐาน
-function normalizeSides(sides) {
-    const sidesStr = sides.toString().toLowerCase();
-    if (sidesStr.includes('สอง') || sidesStr.includes('double') || sidesStr.includes('2') || sidesStr.includes('หลัง')) {
-        return 'Double';
-    }
-    return 'Single';
-}
-
-// โหลดราคาจาก Excel เมื่อเริ่มต้น
+// Load prices on startup
 loadPricesFromExcel();
 
-console.log('Current price data:', Object.keys(priceData).length, 'entries');
+// Business context for AI
+function getBusinessContext() {
+    let priceText = '';
+    priceList.forEach(item => {
+        priceText += `- ${item.ขนาด} ${item.ประเภท} ${item.รูปแบบ}: ${item.ราคา} บาท/แผ่น\n`;
+    });
 
-// ฟังก์ชันคำนวณราคา
-function calculatePrice(paperSize, color, sides, sheets) {
-    const key = `${paperSize}_${color}_${sides}`;
-    const pricePerSheet = priceData[key];
-    
-    if (pricePerSheet) {
-        const totalPrice = pricePerSheet * sheets;
-        return {
-            success: true,
-            pricePerSheet: pricePerSheet,
-            totalPrice: totalPrice,
-            details: `📊 คำนวณราคา:\n🔸 ${paperSize} ${color === 'BW' ? 'ขาวดำ' : 'สี'} ${sides === 'Single' ? 'หน้าเดียว' : 'สองหน้า'}\n🔸 จำนวน: ${sheets} แผ่น\n🔸 ราคา: ${sheets} × ${pricePerSheet} = ${totalPrice} บาท`
-        };
-    }
-    return { success: false, message: 'ไม่พบข้อมูลราคาสำหรับตัวเลือกนี้' };
+    return `คุณเป็นผู้ช่วย AI ของร้าน "It_Business" ร้านถ่ายเอกสารและปริ้นท์คุณภาพสูง
+
+ข้อมูลร้าน:
+- ชื่อร้าน: It_Business
+- ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี 84000
+- โทร: 093-5799850
+- Line: @kengprint
+- เวลาทำการ: จันทร์-ศุกร์ 08:00-19:00, เสาร์ 09:00-18:00, อาทิตย์ 09:00-17:00
+
+ราคาถ่ายเอกสาร:
+${priceText}
+
+โปรโมชั่น:
+- 100 แผ่นขึ้นไป ลด 10%
+- 500 แผ่นขึ้นไป ลด 15%
+- 1000 แผ่นขึ้นไป ลด 20%
+
+บริการอื่นๆ:
+- เข้าเล่ม: 20-100 บาท
+- สแกน: 3-5 บาท/หน้า
+- ลามิเนต: 10-40 บาท
+- พิมพ์ภาพ: 5-50 บาท
+
+กรุณาตอบคำถามอย่างเป็นมิตร สุภาพ ใช้คำลงท้าย "ค่ะ" และใช้อีโมจิเมื่อเหมาะสม`;
 }
 
-// ฟังก์ชันจับคำถาม (อัพเดตให้รองรับ "แผ่น")
-function parseMessage(message) {
+// Calculate price function
+function calculatePrice(paperSize, colorType, printType, sheets) {
+    const key = `${paperSize}_${colorType}_${printType}`;
+    const pricePerSheet = priceData[key];
+    
+    if (pricePerSheet !== undefined) {
+        let totalPrice = pricePerSheet * sheets;
+        let discount = 0;
+        let discountText = '';
+        
+        if (sheets >= 1000) {
+            discount = totalPrice * 0.20;
+            discountText = ' (ลด 20%)';
+        } else if (sheets >= 500) {
+            discount = totalPrice * 0.15;
+            discountText = ' (ลด 15%)';
+        } else if (sheets >= 100) {
+            discount = totalPrice * 0.10;
+            discountText = ' (ลด 10%)';
+        }
+        
+        const finalPrice = totalPrice - discount;
+        
+        let response = 'คำนวณราคา:\n';
+        response += `- ${paperSize} ${colorType} ${printType}\n`;
+        response += `- จำนวน: ${sheets} แผ่น\n`;
+        response += `- ราคา: ${sheets} × ${pricePerSheet} = ${totalPrice.toFixed(2)} บาท\n`;
+        
+        if (discount > 0) {
+            response += `- ส่วนลด${discountText}: -${discount.toFixed(2)} บาท\n`;
+            response += `- ราคาสุทธิ: ${finalPrice.toFixed(2)} บาท`;
+        } else {
+            response += `- ราคารวม: ${totalPrice.toFixed(2)} บาท`;
+        }
+        
+        return {
+            success: true,
+            response: response
+        };
+    }
+    
+    return { 
+        success: false, 
+        response: 'ไม่พบข้อมูลราคาสำหรับรายการนี้ กรุณาตรวจสอบข้อมูลอีกครั้ง'
+    };
+}
+
+// Call Gemini AI
+async function callGeminiAI(userMessage) {
+    if (!geminiApiKey) {
+        return {
+            success: false,
+            message: 'ขออภัยค่ะ AI ไม่พร้อมใช้งาน'
+        };
+    }
+
+    try {
+        const fetch = (await import('node-fetch')).default;
+        
+        const prompt = `${getBusinessContext()}\n\nลูกค้าถาม: ${userMessage}\n\nตอบ:`;
+        
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + geminiApiKey, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{
+                        text: prompt
+                    }]
+                }],
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 500,
+                }
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error('API request failed');
+        }
+
+        const data = await response.json();
+        
+        if (data.candidates && data.candidates[0]) {
+            return {
+                success: true,
+                message: data.candidates[0].content.parts[0].text
+            };
+        }
+        
+        throw new Error('Invalid response');
+
+    } catch (error) {
+        console.error('Gemini AI Error:', error);
+        return {
+            success: false,
+            message: 'ขออภัยค่ะ เกิดข้อผิดพลาด กรุณาลองใหม่'
+        };
+    }
+}
+
+// Parse message
+async function parseMessage(message) {
     const text = message.toLowerCase();
     
-    if (text.includes('สวัสดี') || text.includes('hello') || text.includes('hi')) {
-        return {
-            type: 'greeting',
-            response: 'สวัสดีค่ะ! 😊\nยินดีให้บริการคำนวณราคาถ่ายเอกสาร\n\nตัวอย่างการถาม:\n"A4 ขาวดำ หน้าเดียว 50 แผ่น"\n"A3 สี สองหน้า 20 แผ่น"'
-        };
-    }
-    
-    // โหลดราคาใหม่หากมีคำสั่ง
-    if (text.includes('โหลดราคา') || text.includes('reload') || text.includes('refresh')) {
-        const loaded = loadPricesFromExcel();
-        return {
-            type: 'system',
-            response: loaded ? '✅ โหลดราคาจาก Excel สำเร็จแล้ว' : '⚠️ ไม่พบไฟล์ Excel ใช้ราคา default'
-        };
-    }
-    
-    // แสดงตารางราคา
-    if (text.includes('ราคา') && (text.includes('ตาราง') || text.includes('ทั้งหมด') || text.includes('list'))) {
+    // Price list request
+    if (text.includes('ราคา') && (text.includes('ตาราง') || text.includes('ทั้งหมด'))) {
         return {
             type: 'price_list',
             response: generatePriceTable()
         };
     }
+
+    // Price calculation
+    const hasNumber = /\d+/.test(message);
+    const paperSizes = {
+        'a3': 'A3', 'a4': 'A4', 'a5': 'A5'
+    };
     
-    // จับราคา - pattern ที่รองรับทั้ง "หน้า" และ "แผ่น"
-    const patterns = [
-        // A4/A3 + สี + หน้า/แผ่น + จำนวน
-        /(\w*a4\w*).*?(ขาวดำ|สี|bw|color|black|white).*?(หน้าเดียว|สองหน้า|หน้าหลัง|single|double|\d+\s*(หน้า|แผ่น)|\b(หน้า|แผ่น)\b).*?(\d+)/i,
-        /(\w*a3\w*).*?(ขาวดำ|สี|bw|color|black|white).*?(หน้าเดียว|สองหน้า|หน้าหลัง|single|double|\d+\s*(หน้า|แผ่น)|\b(หน้า|แผ่น)\b).*?(\d+)/i,
-        
-        // สี + A4/A3 + หน้า/แผ่น + จำนวน
-        /(ขาวดำ|สี|bw|color|black|white).*?(\w*a4\w*|\w*a3\w*).*?(หน้าเดียว|สองหน้า|หน้าหลัง|single|double|\d+\s*(หน้า|แผ่น)|\b(หน้า|แผ่น)\b).*?(\d+)/i,
-        
-        // จำนวน + แผ่น/หน้า + A4/A3 + สี + หน้าเดียว/สองหน้า
-        /(\d+).*?(หน้า|แผ่น).*?(a4|a3).*?(ขาวดำ|สี|bw|color|black|white).*?(หน้าเดียว|สองหน้า|หน้าหลัง|single|double)/i
-    ];
-    
-    for (let pattern of patterns) {
-        const match = message.match(pattern);
-        if (match) {
-            let paperSize = 'A4';
-            let color = 'BW';
-            let sides = 'Single';
-            let sheets = 0;
-            
-            // หา paper size
-            for (let part of match) {
-                if (part && part.toLowerCase().includes('a4')) paperSize = 'A4';
-                if (part && part.toLowerCase().includes('a3')) paperSize = 'A3';
-            }
-            
-            // หา color
-            for (let part of match) {
-                if (part && (part.includes('สี') || part.toLowerCase().includes('color'))) color = 'Color';
-            }
-            
-            // หา sides
-            for (let part of match) {
-                if (part && (part.includes('สอง') || part.includes('หลัง') || part.toLowerCase().includes('double'))) sides = 'Double';
-            }
-            
-            // หา sheets (จำนวน)
-            for (let part of match) {
-                if (part && /^\d+$/.test(part)) {
-                    sheets = parseInt(part);
-                    break;
-                }
-            }
-            
-            if (sheets > 0) {
-                const result = calculatePrice(paperSize, color, sides, sheets);
-                return {
-                    type: 'price',
-                    response: result.success ? result.details : result.message
-                };
-            }
+    let detectedSize = null;
+    for (let [key, value] of Object.entries(paperSizes)) {
+        if (text.includes(key)) {
+            detectedSize = value;
+            break;
         }
     }
     
-    // ถ้าไม่จับได้
+    if (hasNumber && detectedSize) {
+        let colorType = text.includes('สี') ? 'สี' : 'ขาวดำ';
+        let printType = text.includes('หลัง') || text.includes('สองหน้า') ? 'หน้าหลัง' : 'หน้าเดียว';
+        
+        const numbers = message.match(/\d+/g);
+        const sheets = Math.max(...numbers.map(n => parseInt(n)));
+        
+        if (sheets > 0) {
+            const result = calculatePrice(detectedSize, colorType, printType, sheets);
+            return {
+                type: 'price',
+                response: result.response
+            };
+        }
+    }
+
+    // AI response
+    const aiResult = await callGeminiAI(message);
     return {
-        type: 'help',
-        response: generateHelpMessage()
+        type: 'ai',
+        response: aiResult.success ? aiResult.message : 'สวัสดีค่ะ! ยินดีให้บริการ เก่งปริ้นท์ ค่ะ มีอะไรให้ช่วยไหมคะ?'
     };
 }
 
-// ฟังก์ชันสร้างตารางราคา
+// Generate price table
 function generatePriceTable() {
-    let table = '💰 ตารางราคาปัจจุบัน:\n\n';
+    let table = 'ตารางราคาถ่ายเอกสาร\n\n';
     
-    const sizes = ['A4', 'A3'];
-    const colors = [['BW', 'ขาวดำ'], ['Color', 'สี']];
-    const sidesList = [['Single', 'หน้าเดียว'], ['Double', 'สองหน้า']];
-    
+    const sizes = ['A3', 'A4', 'A5'];
     sizes.forEach(size => {
-        table += `📄 ${size}:\n`;
-        colors.forEach(([colorKey, colorName]) => {
-            sidesList.forEach(([sidesKey, sidesName]) => {
-                const key = `${size}_${colorKey}_${sidesKey}`;
-                const price = priceData[key];
-                if (price) {
-                    table += `• ${colorName} ${sidesName}: ${price} บาท/แผ่น\n`;
-                }
+        const items = priceList.filter(item => item.ขนาด === size);
+        if (items.length > 0) {
+            table += `${size}:\n`;
+            items.forEach(item => {
+                table += `• ${item.ประเภท} ${item.รูปแบบ}: ${item.ราคา} บาท\n`;
             });
-        });
-        table += '\n';
+            table += '\n';
+        }
     });
     
-    table += '🔄 พิมพ์ "โหลดราคา" เพื่ออัพเดตราคาจาก Excel';
+    table += 'โปรโมชั่น:\n';
+    table += '• 100+ แผ่น ลด 10%\n';
+    table += '• 500+ แผ่น ลด 15%\n';
+    table += '• 1000+ แผ่น ลด 20%';
     
     return table;
 }
 
-// ฟังก์ชันสร้างข้อความช่วยเหลือ
-function generateHelpMessage() {
-    return `📝 ไม่เข้าใจคำถาม กรุณาถามในรูปแบบ:
-
-"A4 ขาวดำ หน้าเดียว 50 แผ่น"
-"A3 สี สองหน้า 20 แผ่น"
-
-💰 ดูตารางราคา: พิมพ์ "ตารางราคา"
-🔄 อัพเดตราคา: พิมพ์ "โหลดราคา"
-
-💡 รองรับคำว่า: หน้า, แผ่น, sheets, pages`;
-}
-
-// หน้าแรก
+// Web interface
 app.get('/', (req, res) => {
-    res.send(`
+    const html = `
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Photocopy Chatbot with Excel Support</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>เก่งปริ้นท์ - Chatbot</title>
         <style>
-            body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
-            .header { text-align: center; margin-bottom: 20px; }
-            .status { padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; }
-            .connected { background-color: #d4edda; color: #155724; }
-            .disconnected { background-color: #f8d7da; color: #721c24; }
-            .excel-info { background-color: #e7f3ff; color: #004085; }
-            .chat-container { border: 2px solid #ddd; height: 400px; overflow-y: auto; padding: 15px; margin: 15px 0; border-radius: 8px; }
-            .message { margin: 10px 0; padding: 12px; border-radius: 8px; white-space: pre-wrap; }
-            .user { background-color: #007bff; color: white; text-align: right; margin-left: 20%; }
-            .bot { background-color: #f8f9fa; border: 1px solid #e9ecef; margin-right: 20%; }
-            .input-group { display: flex; gap: 10px; }
-            input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 5px; }
-            button { padding: 12px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 5px; }
-            button:hover { background-color: #0056b3; }
-            .examples { background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0; }
-            .price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 15px 0; }
-            .price-card { background: #fff; border: 1px solid #ddd; padding: 10px; border-radius: 5px; text-align: center; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            
+            body { 
+                font-family: 'Segoe UI', sans-serif; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                padding: 20px;
+            }
+            
+            .container {
+                max-width: 1200px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 20px;
+                padding: 30px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            }
+            
+            .header { 
+                text-align: center; 
+                margin-bottom: 30px;
+                padding-bottom: 20px;
+                border-bottom: 2px solid #f0f0f0;
+            }
+            
+            .header h1 { 
+                color: #2c3e50; 
+                font-size: 2.5em;
+                margin-bottom: 10px;
+            }
+            
+            .status-grid { 
+                display: grid; 
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+                gap: 15px; 
+                margin: 30px 0; 
+            }
+            
+            .status { 
+                padding: 20px; 
+                border-radius: 15px; 
+                text-align: center;
+                color: white;
+                font-weight: bold;
+            }
+            
+            .connected { background: linear-gradient(135deg, #56ab2f, #a8e6cf); }
+            .disconnected { background: linear-gradient(135deg, #ff416c, #ff4b2b); }
+            .ai-ready { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+            .excel-info { background: linear-gradient(135deg, #fa709a, #fee140); }
+            
+            .chat-container { 
+                height: 400px; 
+                overflow-y: auto; 
+                padding: 20px; 
+                margin: 20px 0; 
+                border-radius: 15px; 
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+            }
+            
+            .message { 
+                margin: 10px 0; 
+                padding: 12px 18px; 
+                border-radius: 18px; 
+                max-width: 70%; 
+                animation: fadeIn 0.3s;
+            }
+            
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            
+            .user { 
+                background: linear-gradient(135deg, #667eea, #764ba2); 
+                color: white; 
+                margin-left: auto; 
+                text-align: right;
+            }
+            
+            .bot { 
+                background: white; 
+                border: 1px solid #dee2e6;
+                margin-right: auto;
+            }
+            
+            .input-group { 
+                display: flex; 
+                gap: 10px; 
+                padding: 20px; 
+                background: white;
+                border-radius: 15px; 
+                border: 1px solid #dee2e6;
+            }
+            
+            input[type="text"] { 
+                flex: 1; 
+                padding: 12px 20px; 
+                border: 2px solid #dee2e6; 
+                border-radius: 25px; 
+                font-size: 16px; 
+                outline: none;
+            }
+            
+            input[type="text"]:focus { 
+                border-color: #667eea; 
+            }
+            
+            button { 
+                padding: 12px 30px; 
+                background: linear-gradient(135deg, #667eea, #764ba2); 
+                color: white; 
+                border: none; 
+                cursor: pointer; 
+                border-radius: 25px; 
+                font-weight: bold;
+                transition: transform 0.2s;
+            }
+            
+            button:hover { 
+                transform: scale(1.05);
+            }
+            
+            .examples { 
+                margin: 20px 0; 
+                padding: 20px;
+                background: #f8f9fa;
+                border-radius: 15px;
+            }
+            
+            .example-buttons { 
+                display: flex; 
+                gap: 10px; 
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }
+            
+            .example-btn { 
+                padding: 8px 16px; 
+                background: white;
+                border: 2px solid #667eea;
+                color: #667eea;
+                border-radius: 20px; 
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            
+            .example-btn:hover { 
+                background: #667eea;
+                color: white;
+            }
         </style>
     </head>
     <body>
-        <div class="header">
-            <h1>🖨️ ระบบคำนวณราคาถ่ายเอกสาร</h1>
-            <p>รองรับการโหลดราคาจาก Excel และคำนวณราคาอัตโนมัติ</p>
-        </div>
-        
-        <div class="status ${client ? 'connected' : 'disconnected'}">
-            <span>LINE Bot: ${client ? '✅ เชื่อมต่อแล้ว' : '⚠️ ไม่ได้เชื่อมต่อ'}</span>
-            <span>ราคา: ${Object.keys(priceData).length} รายการ</span>
-        </div>
-        
-        <div class="excel-info status">
-            <span>💡 วางไฟล์ Excel (prices.xlsx, ราคา.xlsx) ในโฟลเดอร์เดียวกับ app.js</span>
-            <span>🔄 พิมพ์ "โหลดราคา" เพื่ออัพเดต</span>
-        </div>
-        
-        <div class="examples">
-            <h3>📋 ตัวอย่างการใช้งาน:</h3>
-            <div class="price-grid">
-                <div class="price-card">
-                    <strong>A4 ขาวดำ หน้าเดียว 50 แผ่น</strong><br>
-                    <small>ได้ผล: 50 × ราคา = ยอดรวม</small>
+        <div class="container">
+            <div class="header">
+                <h1>It-Business</h1>
+                <p>ระบบถ่ายเอกสารอัจฉริยะ พร้อม AI Assistant</p>
+            </div>
+            
+            <div class="status-grid">
+                <div class="status ${client ? 'connected' : 'disconnected'}">
+                    LINE Bot<br>
+                    ${client ? 'เชื่อมต่อแล้ว' : 'ไม่ได้เชื่อมต่อ'}
                 </div>
-                <div class="price-card">
-                    <strong>A3 สี สองหน้า 20 แผ่น</strong><br>
-                    <small>ได้ผล: 20 × ราคา = ยอดรวม</small>
+                <div class="status ${geminiApiKey ? 'ai-ready' : 'disconnected'}">
+                    Gemini AI<br>
+                    ${geminiApiKey ? 'พร้อมใช้งาน' : 'ไม่พร้อม'}
                 </div>
-                <div class="price-card">
-                    <strong>ตารางราคา</strong><br>
-                    <small>แสดงราคาทั้งหมด</small>
+                <div class="status excel-info">
+                    ราคา Excel<br>
+                    ${priceList.length} รายการ
                 </div>
-                <div class="price-card">
-                    <strong>โหลดราคา</strong><br>
-                    <small>อัพเดตจาก Excel</small>
+                <div class="status connected">
+                    เวลาทำการ<br>
+                    08:00-19:00
                 </div>
             </div>
-        </div>
-        
-        <div class="chat-container" id="chatContainer">
-            <div class="message bot">สวัสดีค่ะ! ยินดีให้บริการคำนวณราคาถ่ายเอกสาร 😊
-
-💡 รองรับการโหลดราคาจาก Excel แล้ว!
-📁 วางไฟล์ Excel ในโฟลเดอร์เดียวกัน
-🔄 พิมพ์ "โหลดราคา" เพื่ออัพเดต
-
-ลองถามเช่น:
-• "A4 ขาวดำ หน้าเดียว 50 แผ่น"
-• "A3 สี สองหน้า 20 แผ่น"
-• "ตารางราคา" (ดูราคาทั้งหมด)</div>
-        </div>
-        
-        <div class="input-group">
-            <input type="text" id="messageInput" placeholder="พิมพ์คำถามของคุณ... (เช่น A4 ขาวดำ หน้าเดียว 10 แผ่น)" onkeypress="if(event.key==='Enter') sendMessage()">
-            <button onclick="sendMessage()">ส่ง</button>
-            <button onclick="loadPriceTable()">ตารางราคา</button>
-            <button onclick="reloadPrices()">โหลดราคา</button>
+            
+            <div class="examples">
+                <strong>ตัวอย่างคำถาม:</strong>
+                <div class="example-buttons">
+                    <button class="example-btn" onclick="sendExample('A4 ขาวดำ 100 แผ่น')">A4 ขาวดำ 100 แผ่น</button>
+                    <button class="example-btn" onclick="sendExample('ตารางราคา')">ตารางราคา</button>
+                    <button class="example-btn" onclick="sendExample('ร้านเปิดกี่โมง')">เวลาทำการ</button>
+                    <button class="example-btn" onclick="sendExample('มีบริการอะไรบ้าง')">บริการ</button>
+                </div>
+            </div>
+            
+            <div class="chat-container" id="chat">
+                <div class="message bot">สวัสดีค่ะ! ยินดีต้อนรับสู่ เก่งปริ้นท์ ค่ะ<br>มีอะไรให้ช่วยไหมคะ?</div>
+            </div>
+            
+            <div class="input-group">
+                <input type="text" id="input" placeholder="พิมพ์ข้อความ..." onkeypress="if(event.key==='Enter') send()">
+                <button onclick="send()">ส่ง</button>
+            </div>
         </div>
 
         <script>
             function addMessage(text, isUser) {
-                const chatContainer = document.getElementById('chatContainer');
-                const messageDiv = document.createElement('div');
-                messageDiv.className = 'message ' + (isUser ? 'user' : 'bot');
-                messageDiv.textContent = text;
-                chatContainer.appendChild(messageDiv);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
+                const chat = document.getElementById('chat');
+                const div = document.createElement('div');
+                div.className = 'message ' + (isUser ? 'user' : 'bot');
+                div.innerHTML = text.replace(/\\n/g, '<br>');
+                chat.appendChild(div);
+                chat.scrollTop = chat.scrollHeight;
             }
 
-            async function sendMessage() {
-                const input = document.getElementById('messageInput');
-                const message = input.value.trim();
-                if (!message) return;
+            async function send() {
+                const input = document.getElementById('input');
+                const text = input.value.trim();
+                if (!text) return;
 
-                addMessage(message, true);
+                addMessage(text, true);
                 input.value = '';
 
                 try {
                     const response = await fetch('/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: message })
+                        body: JSON.stringify({ message: text })
                     });
+                    
                     const data = await response.json();
-                    addMessage(data.reply, false);
+                    addMessage(data.reply || 'ขออภัย เกิดข้อผิดพลาด', false);
                 } catch (error) {
-                    addMessage('ขออภัย เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', false);
+                    addMessage('ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่', false);
                 }
             }
             
-            function loadPriceTable() {
-                sendMessageText('ตารางราคา');
-            }
-            
-            function reloadPrices() {
-                sendMessageText('โหลดราคา');
-            }
-            
-            function sendMessageText(text) {
-                document.getElementById('messageInput').value = text;
-                sendMessage();
+            function sendExample(text) {
+                document.getElementById('input').value = text;
+                send();
             }
         </script>
     </body>
     </html>
-    `);
+    `;
+    
+    res.send(html);
+});
+
+// Chat API
+app.post('/chat', express.json(), async (req, res) => {
+    try {
+        const result = await parseMessage(req.body.message);
+        res.json({ reply: result.response });
+    } catch (error) {
+        console.error('Chat error:', error);
+        res.json({ reply: 'ขออภัยค่ะ เกิดข้อผิดพลาด' });
+    }
 });
 
 // Health check
 app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'OK', 
-        timestamp: new Date().toISOString(),
-        lineBot: client ? 'Connected' : 'Disconnected',
-        priceEntries: Object.keys(priceData).length
-    });
-});
-
-// Chat API
-app.post('/chat', express.json(), (req, res) => {
-    console.log('Received web message:', req.body.message);
-    const result = parseMessage(req.body.message);
-    console.log('Web response:', result.response);
-    res.json({ reply: result.response });
-});
-
-// Reload prices API
-app.post('/reload-prices', express.json(), (req, res) => {
-    const loaded = loadPricesFromExcel();
     res.json({ 
-        success: loaded, 
-        message: loaded ? 'โหลดราคาจาก Excel สำเร็จ' : 'ไม่พบไฟล์ Excel',
-        priceEntries: Object.keys(priceData).length
+        status: 'OK',
+        prices: priceList.length,
+        ai: geminiApiKey ? 'ready' : 'not configured'
     });
 });
 
-// LINE Webhook
-if (client && lineConfig) {
-    app.post('/webhook', line.middleware(lineConfig), (req, res) => {
-        console.log('🎯 LINE Webhook received successfully!');
-        
-        if (!req.body.events || req.body.events.length === 0) {
-            return res.status(200).json({ message: 'No events' });
-        }
+// Price API
+app.get('/api/prices', (req, res) => {
+    res.json(priceList);
+});
 
-        Promise.all(req.body.events.map(handleEvent))
-            .then(() => res.status(200).json({ success: true }))
-            .catch((err) => {
-                console.error('LINE Event error:', err);
-                res.status(500).json({ error: 'Processing failed' });
-            });
+// LINE webhook
+if (client && lineConfig) {
+    app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
+        try {
+            await Promise.all(req.body.events.map(handleLineEvent));
+            res.json({ success: true });
+        } catch (err) {
+            console.error('LINE error:', err);
+            res.status(500).end();
+        }
     });
 
-    async function handleEvent(event) {
-        console.log('Processing LINE event:', event.type);
-        
+    async function handleLineEvent(event) {
         if (event.type !== 'message' || event.message.type !== 'text') {
             return null;
         }
 
-        console.log('LINE message:', event.message.text);
-        const result = parseMessage(event.message.text);
-
-        try {
-            await client.replyMessage(event.replyToken, {
-                type: 'text',
-                text: result.response
-            });
-            console.log('✅ Reply sent to LINE');
-        } catch (error) {
-            console.error('❌ LINE reply error:', error);
-            throw error;
-        }
+        const result = await parseMessage(event.message.text);
+        
+        return client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: result.response
+        });
     }
 } else {
-    app.post('/webhook', express.json(), (req, res) => {
-        res.status(200).json({ message: 'LINE not configured' });
+    app.post('/webhook', (req, res) => {
+        res.json({ message: 'LINE not configured' });
     });
 }
 
-// 404 handler
-app.use((req, res) => {
-    if (req.originalUrl.includes('favicon.ico')) {
-        return res.status(204).end();
-    }
-    console.log('404:', req.originalUrl);
-    res.status(404).json({ error: 'Not found' });
-});
-
-// Error handler
-app.use((error, req, res, next) => {
-    console.error('Express error:', error);
-    res.status(500).json({ error: 'Server error' });
-});
-
 // Start server
 app.listen(port, () => {
-    console.log(`\n🚀 Server running on port ${port}`);
-    console.log('🌐 URL: https://photocopy-chatbot.onrender.com');
-    console.log('\n📊 Status:');
-    console.log('- Web Interface: ✅');
-    console.log('- LINE Bot:', client ? '✅ Ready' : '⚠️ Disabled');
-    console.log('- Webhook: ✅ /webhook');
-    console.log('- Excel Support: ✅ Ready');
-    console.log('- Price Entries:', Object.keys(priceData).length);
+    console.log(`
+========================================
+     It-Business Chatbot Started!
+========================================
+🚀 Server: http://localhost:${port}
+📊 Prices: ${priceList.length} items loaded
+🤖 AI: ${geminiApiKey ? 'Ready' : 'Not configured'}
+📱 LINE: ${client ? 'Connected' : 'Not configured'}
+========================================
+    `);
 });
