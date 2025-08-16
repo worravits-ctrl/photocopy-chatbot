@@ -100,7 +100,7 @@ function getBusinessContext() {
 - ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี 84000
 - โทร: 093-5799850
 - Line: @kengprint
-- เวลาทำการ: จันทร์-ศุกร์ 08:00-19:00, เสาร์ 09:00-18:00, อาทิตย์ 09:00-17:00
+- เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00, อาทิตย์ 09:00-17:00
 
 ราคาถ่ายเอกสาร:
 ${priceText}
@@ -268,7 +268,7 @@ async function parseMessage(message) {
     const aiResult = await callGeminiAI(message);
     return {
         type: 'ai',
-        response: aiResult.success ? aiResult.message : 'สวัสดีค่ะ! ยินดีให้บริการ เก่งปริ้นท์ ค่ะ มีอะไรให้ช่วยไหมคะ?'
+        response: aiResult.success ? aiResult.message : 'สวัสดีค่ะ! ยินดีให้บริการ It-Business ค่ะ มีอะไรให้ช่วยไหมคะ?'
     };
 }
 
