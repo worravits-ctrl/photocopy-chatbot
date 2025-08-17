@@ -152,17 +152,15 @@ function getBusinessContext() {
 - Line: id เบอร์ร้าน
 - เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00, อาทิตย์ ปิด
 - เจ้าของร้าน: พี่เวฟ
-- แม่เจ้าของร้าน: ป้าดา
 - พ่อเจ้าของร้าน: ลุงเดียร์
 - ใกล้โรงแรม: Thehub
-- อยู่ในสถานี บขส. ใกล้เซ็นทรัล
 ราคาถ่ายเอกสาร:
 ${priceText}
 
 โปรโมชั่น:
-- 100 แผ่นขึ้นไป ลด 15%
-- 500 แผ่นขึ้นไป ลด 20%
-- 1000 แผ่นขึ้นไป ลด 25%
+- 100 แผ่นขึ้นไป ลด 10%
+- 500 แผ่นขึ้นไป ลด 15%
+- 1000 แผ่นขึ้นไป ลด 20%
 
 บริการอื่นๆ:
 - เข้าเล่ม: 20-100 บาท
@@ -396,206 +394,480 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>It-Bsiness - Chatbot</title>
+        <title>It-Business - Smart Document Center</title>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
         <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
             
+            :root {
+                --primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                --secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                --success: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+                --warning: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+                --danger: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+                --glass: rgba(255,255,255,0.1);
+                --shadow: 0 20px 40px rgba(0,0,0,0.1);
+            }
+            
             body { 
-                font-family: 'Segoe UI', sans-serif; 
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: var(--primary);
                 min-height: 100vh;
-                padding: 20px;
+                overflow-x: hidden;
             }
             
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-                background: white;
-                border-radius: 20px;
-                padding: 30px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            }
-            
-            .header { 
-                text-align: center; 
-                margin-bottom: 30px;
-                padding-bottom: 20px;
-                border-bottom: 2px solid #f0f0f0;
-            }
-            
-            .header h1 { 
-                color: #2c3e50; 
-                font-size: 2.5em;
-                margin-bottom: 10px;
-            }
-            
-            .status-grid { 
-                display: grid; 
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-                gap: 15px; 
-                margin: 30px 0; 
-            }
-            
-            .status { 
-                padding: 20px; 
-                border-radius: 15px; 
-                text-align: center;
+            /* Status Bar */
+            .status-bar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 1000;
+                background: rgba(0,0,0,0.8);
+                backdrop-filter: blur(10px);
+                padding: 8px 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12px;
                 color: white;
+            }
+            
+            .status-item {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+            
+            .status-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                animation: pulse 2s infinite;
+            }
+            
+            .status-connected { background: #00ff00; }
+            .status-disconnected { background: #ff0000; }
+            
+            @keyframes pulse {
+                0% { opacity: 1; }
+                50% { opacity: 0.5; }
+                100% { opacity: 1; }
+            }
+            
+            /* Main Container */
+            .container {
+                max-width: 1400px;
+                margin: 0 auto;
+                padding: 60px 20px 20px;
+                min-height: 100vh;
+                display: grid;
+                grid-template-columns: 300px 1fr;
+                gap: 20px;
+            }
+            
+            /* Sidebar */
+            .sidebar {
+                background: var(--glass);
+                backdrop-filter: blur(20px);
+                border-radius: 20px;
+                padding: 20px;
+                box-shadow: var(--shadow);
+                border: 1px solid rgba(255,255,255,0.2);
+                height: fit-content;
+                position: sticky;
+                top: 80px;
+            }
+            
+            .logo {
+                text-align: center;
+                margin-bottom: 30px;
+                padding: 20px;
+                background: white;
+                border-radius: 15px;
+                box-shadow: var(--shadow);
+            }
+            
+            .logo h1 {
+                background: var(--primary);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                font-size: 2em;
+                margin-bottom: 5px;
+            }
+            
+            .logo p {
+                color: #666;
+                font-size: 14px;
+            }
+            
+            .menu-section {
+                margin-bottom: 25px;
+            }
+            
+            .menu-title {
+                color: white;
+                font-weight: bold;
+                margin-bottom: 15px;
+                font-size: 16px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            
+            .menu-btn {
+                width: 100%;
+                padding: 12px 15px;
+                margin-bottom: 8px;
+                background: rgba(255,255,255,0.1);
+                border: none;
+                border-radius: 12px;
+                color: white;
+                cursor: pointer;
+                transition: all 0.3s;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+                backdrop-filter: blur(10px);
+            }
+            
+            .menu-btn:hover {
+                background: rgba(255,255,255,0.2);
+                transform: translateY(-2px);
+                box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            }
+            
+            .menu-btn.active {
+                background: white;
+                color: #667eea;
                 font-weight: bold;
             }
             
-            .connected { background: linear-gradient(135deg, #56ab2f, #a8e6cf); }
-            .disconnected { background: linear-gradient(135deg, #ff416c, #ff4b2b); }
-            .ai-ready { background: linear-gradient(135deg, #4facfe, #00f2fe); }
-            .excel-info { background: linear-gradient(135deg, #fa709a, #fee140); }
+            /* Main Content */
+            .main-content {
+                background: white;
+                border-radius: 20px;
+                box-shadow: var(--shadow);
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                min-height: calc(100vh - 120px);
+            }
+            
+            .chat-header {
+                background: var(--primary);
+                color: white;
+                padding: 20px;
+                text-align: center;
+            }
+            
+            .chat-header h2 {
+                font-size: 24px;
+                margin-bottom: 5px;
+            }
+            
+            .chat-header p {
+                opacity: 0.9;
+            }
             
             .chat-container { 
-                height: 400px; 
-                overflow-y: auto; 
-                padding: 20px; 
-                margin: 20px 0; 
-                border-radius: 15px; 
-                background: #f8f9fa;
-                border: 1px solid #dee2e6;
+                flex: 1;
+                padding: 20px;
+                overflow-y: auto;
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                position: relative;
             }
             
             .message { 
-                margin: 10px 0; 
-                padding: 12px 18px; 
-                border-radius: 18px; 
-                max-width: 70%; 
-                animation: fadeIn 0.3s;
+                margin: 15px 0; 
+                padding: 15px 20px; 
+                border-radius: 20px; 
+                max-width: 80%; 
+                animation: fadeIn 0.5s ease-out;
+                position: relative;
             }
             
             @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
+                from { opacity: 0; transform: translateY(20px); }
                 to { opacity: 1; transform: translateY(0); }
             }
             
             .user { 
-                background: linear-gradient(135deg, #667eea, #764ba2); 
+                background: var(--primary);
                 color: white; 
                 margin-left: auto; 
-                text-align: right;
+                border-bottom-right-radius: 5px;
+                box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
             }
             
             .bot { 
-                background: white; 
-                border: 1px solid #dee2e6;
+                background: white;
+                border: 1px solid #e9ecef;
                 margin-right: auto;
+                border-bottom-left-radius: 5px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            }
+            
+            .bot::before {
+                content: '🤖';
+                position: absolute;
+                left: -30px;
+                top: 15px;
+                font-size: 20px;
+            }
+            
+            .input-section {
+                padding: 20px;
+                background: white;
+                border-top: 1px solid #e9ecef;
             }
             
             .input-group { 
                 display: flex; 
-                gap: 10px; 
-                padding: 20px; 
-                background: white;
-                border-radius: 15px; 
-                border: 1px solid #dee2e6;
+                gap: 15px; 
+                align-items: center;
             }
             
             input[type="text"] { 
                 flex: 1; 
-                padding: 12px 20px; 
-                border: 2px solid #dee2e6; 
+                padding: 15px 25px; 
+                border: 2px solid #e9ecef; 
                 border-radius: 25px; 
                 font-size: 16px; 
                 outline: none;
+                transition: all 0.3s;
             }
             
             input[type="text"]:focus { 
-                border-color: #667eea; 
+                border-color: #667eea;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
             }
             
-            button { 
-                padding: 12px 30px; 
-                background: linear-gradient(135deg, #667eea, #764ba2); 
+            .send-btn { 
+                padding: 15px 25px; 
+                background: var(--primary);
                 color: white; 
                 border: none; 
                 cursor: pointer; 
                 border-radius: 25px; 
                 font-weight: bold;
-                transition: transform 0.2s;
+                transition: all 0.3s;
+                display: flex;
+                align-items: center;
+                gap: 8px;
             }
             
-            button:hover { 
-                transform: scale(1.05);
+            .send-btn:hover { 
+                transform: translateY(-2px);
+                box-shadow: 0 15px 30px rgba(102, 126, 234, 0.4);
             }
             
-            .examples { 
-                margin: 20px 0; 
+            /* Quick Actions */
+            .quick-actions {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 15px;
                 padding: 20px;
                 background: #f8f9fa;
-                border-radius: 15px;
             }
             
-            .example-buttons { 
-                display: flex; 
-                gap: 10px; 
-                flex-wrap: wrap;
-                margin-top: 10px;
-            }
-            
-            .example-btn { 
-                padding: 8px 16px; 
+            .quick-btn {
+                padding: 15px;
                 background: white;
-                border: 2px solid #667eea;
-                color: #667eea;
-                border-radius: 20px; 
+                border: 2px solid #e9ecef;
+                border-radius: 15px;
                 cursor: pointer;
-                transition: all 0.2s;
+                transition: all 0.3s;
+                text-align: center;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
             }
             
-            .example-btn:hover { 
-                background: #667eea;
-                color: white;
+            .quick-btn:hover {
+                border-color: #667eea;
+                transform: translateY(-3px);
+                box-shadow: 0 15px 30px rgba(0,0,0,0.1);
+            }
+            
+            .quick-btn i {
+                font-size: 24px;
+                color: #667eea;
+            }
+            
+            .quick-btn span {
+                font-weight: 500;
+                color: #333;
+            }
+            
+            /* Mobile Responsive */
+            @media (max-width: 768px) {
+                .container {
+                    grid-template-columns: 1fr;
+                    padding: 60px 10px 10px;
+                }
+                
+                .sidebar {
+                    position: relative;
+                    top: 0;
+                    order: 2;
+                }
+                
+                .status-bar {
+                    font-size: 10px;
+                    padding: 5px 10px;
+                }
+                
+                .quick-actions {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+            }
+            
+            /* Loading Animation */
+            .typing {
+                display: inline-block;
+                width: 20px;
+                height: 20px;
+            }
+            
+            .typing::after {
+                content: '●●●';
+                animation: typing 1.4s infinite;
+                color: #999;
+            }
+            
+            @keyframes typing {
+                0% { content: '●○○'; }
+                33% { content: '●●○'; }
+                66% { content: '●●●'; }
+                100% { content: '●○○'; }
             }
         </style>
     </head>
     <body>
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div style="display: flex; gap: 20px;">
+                <div class="status-item">
+                    <div class="status-dot ${client ? 'status-connected' : 'status-disconnected'}"></div>
+                    <span>LINE Bot</span>
+                </div>
+                <div class="status-item">
+                    <div class="status-dot ${geminiApiKey ? 'status-connected' : 'status-disconnected'}"></div>
+                    <span>Gemini AI</span>
+                </div>
+            </div>
+            <div class="status-item">
+                <i class="fas fa-database"></i>
+                <span>${priceList.length} ราคา</span>
+            </div>
+        </div>
+
         <div class="container">
-            <div class="header">
-                <h1>It-Business</h1>
-                <p>ระบบถ่ายเอกสารอัจฉริยะ พร้อม AI Assistant</p>
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="logo">
+                    <h1><i class="fas fa-print"></i> It-Business</h1>
+                    <p>Smart Document Center</p>
+                </div>
+
+                <div class="menu-section">
+                    <div class="menu-title">
+                        <i class="fas fa-calculator"></i> คำนวณราคา
+                    </div>
+                    <button class="menu-btn" onclick="sendQuickMessage('A4 ขาวดำ หน้าเดียว 50 แผ่น')">
+                        <i class="fas fa-file-alt"></i> A4 ขาวดำ 50 แผ่น
+                    </button>
+                    <button class="menu-btn" onclick="sendQuickMessage('A4 สี หน้าหลัง 100 แผ่น')">
+                        <i class="fas fa-palette"></i> A4 สี 100 แผ่น
+                    </button>
+                    <button class="menu-btn" onclick="sendQuickMessage('A3 ขาวดำ หน้าเดียว 20 แผ่น')">
+                        <i class="fas fa-expand"></i> A3 ขาวดำ 20 แผ่น
+                    </button>
+                </div>
+
+                <div class="menu-section">
+                    <div class="menu-title">
+                        <i class="fas fa-list"></i> ข้อมูลร้าน
+                    </div>
+                    <button class="menu-btn" onclick="sendQuickMessage('ตารางราคาทั้งหมด')">
+                        <i class="fas fa-table"></i> ตารางราคา
+                    </button>
+                    <button class="menu-btn" onclick="sendQuickMessage('เวลาทำการ')">
+                        <i class="fas fa-clock"></i> เวลาทำการ
+                    </button>
+                    <button class="menu-btn" onclick="sendQuickMessage('ที่อยู่ร้าน')">
+                        <i class="fas fa-map-marker-alt"></i> ที่อยู่ร้าน
+                    </button>
+                    <button class="menu-btn" onclick="sendQuickMessage('โทรศัพท์')">
+                        <i class="fas fa-phone"></i> เบอร์โทร
+                    </button>
+                </div>
+
+                <div class="menu-section">
+                    <div class="menu-title">
+                        <i class="fas fa-tools"></i> บริการอื่นๆ
+                    </div>
+                    <button class="menu-btn" onclick="sendQuickMessage('ราคาเข้าเล่ม')">
+                        <i class="fas fa-book"></i> เข้าเล่ม
+                    </button>
+                    <button class="menu-btn" onclick="sendQuickMessage('ราคาสแกน')">
+                        <i class="fas fa-scanner"></i> สแกน
+                    </button>
+                    <button class="menu-btn" onclick="sendQuickMessage('ราคาลามิเนต')">
+                        <i class="fas fa-layer-group"></i> ลามิเนต
+                    </button>
+                    <button class="menu-btn" onclick="sendQuickMessage('ราคาพิมพ์ภาพ')">
+                        <i class="fas fa-image"></i> พิมพ์ภาพ
+                    </button>
+                </div>
             </div>
-            
-            <div class="status-grid">
-                <div class="status ${client ? 'connected' : 'disconnected'}">
-                    LINE Bot<br>
-                    ${client ? 'เชื่อมต่อแล้ว' : 'ไม่ได้เชื่อมต่อ'}
+
+            <!-- Main Content -->
+            <div class="main-content">
+                <div class="chat-header">
+                    <h2>🤖 AI Assistant</h2>
+                    <p>ยินดีให้บริการข้อมูลและคำนวณราคา</p>
                 </div>
-                <div class="status ${geminiApiKey ? 'ai-ready' : 'disconnected'}">
-                    Gemini AI<br>
-                    ${geminiApiKey ? 'พร้อมใช้งาน' : 'ไม่พร้อม'}
+
+                <div class="quick-actions">
+                    <div class="quick-btn" onclick="sendQuickMessage('วันนี้วันอะไร')">
+                        <i class="fas fa-calendar-day"></i>
+                        <span>วันนี้วันอะไร</span>
+                    </div>
+                    <div class="quick-btn" onclick="sendQuickMessage('ร้านเปิดหรือยัง')">
+                        <i class="fas fa-store"></i>
+                        <span>สถานะร้าน</span>
+                    </div>
+                    <div class="quick-btn" onclick="sendQuickMessage('โปรโมชั่น')">
+                        <i class="fas fa-tags"></i>
+                        <span>โปรโมชั่น</span>
+                    </div>
+                    <div class="quick-btn" onclick="sendQuickMessage('มีบริการอะไรบ้าง')">
+                        <i class="fas fa-concierge-bell"></i>
+                        <span>บริการทั้งหมด</span>
+                    </div>
                 </div>
-                <div class="status excel-info">
-                    ราคา Excel<br>
-                    ${priceList.length} รายการ
+
+                <div class="chat-container" id="chat">
+                    <div class="message bot">
+                        สวัสดีค่ะ! 👋 ยินดีต้อนรับสู่ It-Business<br>
+                        ระบบถ่ายเอกสารอัจฉริยะ พร้อมให้บริการคำนวณราคาและข้อมูลต่างๆ ค่ะ<br><br>
+                        <strong>🎯 ลองคลิกเมนูด้านซ้าย หรือปุ่มด้านบนเพื่อเริ่มต้น!</strong>
+                    </div>
                 </div>
-                <div class="status connected">
-                    เวลาทำการ<br>
-                    08:00-19:00
+
+                <div class="input-section">
+                    <div class="input-group">
+                        <input type="text" id="input" placeholder="💬 พิมพ์คำถามของคุณ..." onkeypress="if(event.key==='Enter') send()">
+                        <button class="send-btn" onclick="send()">
+                            <i class="fas fa-paper-plane"></i>
+                            ส่ง
+                        </button>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="examples">
-                <strong>ตัวอย่างคำถาม:</strong>
-                <div class="example-buttons">
-                    <button class="example-btn" onclick="sendExample('A4 ขาวดำ 100 แผ่น')">A4 ขาวดำ 100 แผ่น</button>
-                    <button class="example-btn" onclick="sendExample('ตารางราคา')">ตารางราคา</button>
-                    <button class="example-btn" onclick="sendExample('วันนี้วันอะไร')">วันนี้วันอะไร</button>
-                    <button class="example-btn" onclick="sendExample('ร้านเปิดกี่โมง')">เวลาทำการ</button>
-                    <button class="example-btn" onclick="sendExample('มีบริการอะไรบ้าง')">บริการ</button>
-                </div>
-            </div>
-            
-            <div class="chat-container" id="chat">
-                <div class="message bot">สวัสดีค่ะ! ยินดีต้อนรับสู่ It-Business ค่ะ<br>มีอะไรให้ช่วยไหมคะ?</div>
-            </div>
-            
-            <div class="input-group">
-                <input type="text" id="input" placeholder="พิมพ์ข้อความ..." onkeypress="if(event.key==='Enter') send()">
-                <button onclick="send()">ส่ง</button>
             </div>
         </div>
 
@@ -609,6 +881,21 @@ app.get('/', (req, res) => {
                 chat.scrollTop = chat.scrollHeight;
             }
 
+            function showTyping() {
+                const chat = document.getElementById('chat');
+                const div = document.createElement('div');
+                div.className = 'message bot';
+                div.id = 'typing-indicator';
+                div.innerHTML = '<div class="typing"></div> กำลังพิมพ์...';
+                chat.appendChild(div);
+                chat.scrollTop = chat.scrollHeight;
+            }
+
+            function removeTyping() {
+                const typing = document.getElementById('typing-indicator');
+                if (typing) typing.remove();
+            }
+
             async function send() {
                 const input = document.getElementById('input');
                 const text = input.value.trim();
@@ -616,6 +903,7 @@ app.get('/', (req, res) => {
 
                 addMessage(text, true);
                 input.value = '';
+                showTyping();
 
                 try {
                     const response = await fetch('/chat', {
@@ -625,16 +913,21 @@ app.get('/', (req, res) => {
                     });
                     
                     const data = await response.json();
-                    addMessage(data.reply || 'ขออภัย เกิดข้อผิดพลาด', false);
+                    removeTyping();
+                    addMessage(data.reply || '❌ ขออภัย เกิดข้อผิดพลาด', false);
                 } catch (error) {
-                    addMessage('ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่', false);
+                    removeTyping();
+                    addMessage('🔌 ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่ในภายหลัง', false);
                 }
             }
             
-            function sendExample(text) {
+            function sendQuickMessage(text) {
                 document.getElementById('input').value = text;
                 send();
             }
+
+            // Auto-focus input
+            document.getElementById('input').focus();
         </script>
     </body>
     </html>
