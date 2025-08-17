@@ -92,6 +92,42 @@ function loadPricesFromExcel() {
 // Load prices on startup
 loadPricesFromExcel();
 
+// Get current date and time info
+function getCurrentDateInfo() {
+    const now = new Date();
+    const options = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        timeZone: 'Asia/Bangkok'
+    };
+    const thaiDate = now.toLocaleDateString('th-TH', options);
+    const time = now.toLocaleTimeString('th-TH', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        timeZone: 'Asia/Bangkok'
+    });
+    
+    // Check if shop is open
+    const hour = now.getHours();
+    const day = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    let isOpen = false;
+    
+    if (day >= 1 && day <= 5) { // Monday to Friday
+        isOpen = hour >= 8 && hour < 17;
+    } else if (day === 6) { // Saturday
+        isOpen = hour >= 9 && hour < 17;
+    } // Sunday is closed
+    
+    return {
+        date: thaiDate,
+        time: time,
+        isOpen: isOpen,
+        day: day
+    };
+}
+
 // Business context for AI
 function getBusinessContext() {
     let priceText = '';
@@ -99,7 +135,15 @@ function getBusinessContext() {
         priceText += `- ${item.ขนาด} ${item.ประเภท} ${item.รูปแบบ}: ${item.ราคา} บาท/แผ่น\n`;
     });
 
+    const dateInfo = getCurrentDateInfo();
+    const shopStatus = dateInfo.isOpen ? '🟢 ร้านเปิดอยู่' : '🔴 ร้านปิด';
+
     return `คุณเป็นผู้ช่วย AI ของร้าน "It_Business" ร้านถ่ายเอกสารและปริ้นท์คุณภาพสูง
+
+ข้อมูลวันเวลาปัจจุบัน:
+- วันที่: ${dateInfo.date}
+- เวลา: ${dateInfo.time} น.
+- สถานะร้าน: ${shopStatus}
 
 ข้อมูลร้าน:
 - ชื่อร้าน: It_Business
@@ -233,6 +277,22 @@ async function callGeminiAI(userMessage) {
 // Parse message
 async function parseMessage(message) {
     const text = message.toLowerCase();
+    
+    // Date/time queries
+    if (text.includes('วันนี้') || text.includes('วันอะไร') || text.includes('กี่โมง') || text.includes('เวลา')) {
+        const dateInfo = getCurrentDateInfo();
+        let response = `📅 วันที่: ${dateInfo.date}\n⏰ เวลา: ${dateInfo.time} น.\n`;
+        
+        if (text.includes('เปิด') || text.includes('ปิด') || text.includes('ทำการ')) {
+            response += `🏪 สถานะร้าน: ${dateInfo.isOpen ? '🟢 ร้านเปิดอยู่' : '🔴 ร้านปิด'}\n`;
+            response += `📋 เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00, อาทิตย์ ปิด`;
+        }
+        
+        return {
+            type: 'datetime',
+            response: response
+        };
+    }
     
     // Price list request
     if (text.includes('ราคา') && (text.includes('ตาราง') || text.includes('ทั้งหมด'))) {
@@ -512,7 +572,7 @@ app.get('/', (req, res) => {
                 </div>
                 <div class="status connected">
                     เวลาทำการ<br>
-                    08:00-17:00
+                    08:00-19:00
                 </div>
             </div>
             
@@ -521,6 +581,7 @@ app.get('/', (req, res) => {
                 <div class="example-buttons">
                     <button class="example-btn" onclick="sendExample('A4 ขาวดำ 100 แผ่น')">A4 ขาวดำ 100 แผ่น</button>
                     <button class="example-btn" onclick="sendExample('ตารางราคา')">ตารางราคา</button>
+                    <button class="example-btn" onclick="sendExample('วันนี้วันอะไร')">วันนี้วันอะไร</button>
                     <button class="example-btn" onclick="sendExample('ร้านเปิดกี่โมง')">เวลาทำการ</button>
                     <button class="example-btn" onclick="sendExample('มีบริการอะไรบ้าง')">บริการ</button>
                 </div>
