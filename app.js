@@ -95,6 +95,10 @@ loadPricesFromExcel();
 // Get current date and time info
 function getCurrentDateInfo() {
     const now = new Date();
+    
+    // แปลงเวลาเป็น timezone ไทย
+    const bangkokTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Bangkok"}));
+    
     const options = { 
         weekday: 'long', 
         year: 'numeric', 
@@ -102,58 +106,132 @@ function getCurrentDateInfo() {
         day: 'numeric',
         timeZone: 'Asia/Bangkok'
     };
-    const thaiDate = now.toLocaleDateString('th-TH', options);
-    const time = now.toLocaleTimeString('th-TH', { 
+    const thaiDate = bangkokTime.toLocaleDateString('th-TH', options);
+    const time = bangkokTime.toLocaleTimeString('th-TH', { 
         hour: '2-digit', 
         minute: '2-digit',
         timeZone: 'Asia/Bangkok'
     });
     
-    // Check if shop is open
-    const hour = now.getHours();
-    const day = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    let isOpen = false;
+    // ใช้เวลาไทยในการตรวจสอบ
+    const hour = bangkokTime.getHours();
+    const minute = bangkokTime.getMinutes();
+    const day = bangkokTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
     
-    if (day >= 1 && day <= 5) { // Monday to Friday
-        isOpen = hour >= 8 && hour < 17;
-    } else if (day === 6) { // Saturday
-        isOpen = hour >= 9 && hour < 17;
-    } // Sunday is closed
+    let isOpen = false;
+    let shopHours = '';
+    
+    if (day >= 1 && day <= 5) { // Monday to Friday (จันทร์-ศุกร์)
+        // เวลา 08:00-17:00
+        isOpen = (hour > 8) || (hour === 8 && minute >= 0) && (hour < 17);
+        shopHours = '08:00-17:00';
+    } else if (day === 6) { // Saturday (เสาร์)
+        // เวลา 09:00-17:00
+        isOpen = (hour > 9) || (hour === 9 && minute >= 0) && (hour < 17);
+        shopHours = '09:00-17:00';
+    } else { // Sunday (อาทิตย์)
+        isOpen = false;
+        shopHours = 'ปิด';
+    }
+    
+    // Debug log เพื่อตรวจสอบ
+    console.log(`Debug Shop Hours:
+        Bangkok Time: ${bangkokTime.toISOString()}
+        Local Hour: ${hour}:${minute.toString().padStart(2, '0')}
+        Day: ${day} (0=Sun, 1=Mon, ..., 6=Sat)
+        Should be open: ${isOpen}
+        Shop hours today: ${shopHours}
+    `);
     
     return {
         date: thaiDate,
         time: time,
         isOpen: isOpen,
-        day: day
+        day: day,
+        hour: hour,
+        minute: minute,
+        shopHours: shopHours
     };
 }
 
-// Business context for AI
+// ฟังก์ชันเสริมเพื่อแสดงสถานะร้านแบบละเอียด
+function getDetailedShopStatus() {
+    const dateInfo = getCurrentDateInfo();
+    const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+    const currentDay = dayNames[dateInfo.day];
+    
+    let statusMessage = '';
+    let nextOpenTime = '';
+    
+    if (dateInfo.isOpen) {
+        // ร้านเปิดอยู่
+        let closeTime = '';
+        if (dateInfo.day >= 1 && dateInfo.day <= 6) {
+            closeTime = '17:00';
+        }
+        statusMessage = `🟢 ร้านเปิดอยู่ (ปิดเวลา ${closeTime} น.)`;
+    } else {
+        // ร้านปิด - คำนวณเวลาเปิดครั้งต่อไป
+        if (dateInfo.day === 0) { // อาทิตย์
+            nextOpenTime = 'จันทร์ 08:00 น.';
+        } else if (dateInfo.day === 6 && dateInfo.hour >= 17) { // เสาร์หลัง 17:00
+            nextOpenTime = 'จันทร์ 08:00 น.';
+        } else if (dateInfo.day >= 1 && dateInfo.day <= 5) {
+            // จันทร์-ศุกร์
+            if (dateInfo.hour < 8) {
+                nextOpenTime = `วันนี้ 08:00 น.`;
+            } else {
+                nextOpenTime = 'พรุ่งนี้ 08:00 น.';
+            }
+        } else if (dateInfo.day === 6) {
+            // เสาร์
+            if (dateInfo.hour < 9) {
+                nextOpenTime = `วันนี้ 09:00 น.`;
+            } else {
+                nextOpenTime = 'จันทร์ 08:00 น.';
+            }
+        }
+        statusMessage = `🔴 ร้านปิด (เปิดอีกครั้ง: ${nextOpenTime})`;
+    }
+    
+    return {
+        ...dateInfo,
+        currentDay: currentDay,
+        statusMessage: statusMessage,
+        nextOpenTime: nextOpenTime
+    };
+}
+
+// ปรับปรุงฟังก์ชัน getBusinessContext() ให้แสดงข้อมูลที่ถูกต้อง
 function getBusinessContext() {
     let priceText = '';
     priceList.forEach(item => {
         priceText += `- ${item.ขนาด} ${item.ประเภท} ${item.รูปแบบ}: ${item.ราคา} บาท/แผ่น\n`;
     });
 
-    const dateInfo = getCurrentDateInfo();
-    const shopStatus = dateInfo.isOpen ? '🟢 ร้านเปิดอยู่' : '🔴 ร้านปิด';
+    const shopStatus = getDetailedShopStatus();
 
     return `คุณเป็นผู้ช่วย AI ของร้าน "It_Business" ร้านถ่ายเอกสารและปริ้นท์คุณภาพสูง
 
 ข้อมูลวันเวลาปัจจุบัน:
-- วันที่: ${dateInfo.date}
-- เวลา: ${dateInfo.time} น.
-- สถานะร้าน: ${shopStatus}
+- วันที่: ${shopStatus.date}
+- เวลา: ${shopStatus.time} น.
+- สถานะร้าน: ${shopStatus.statusMessage}
 
 ข้อมูลร้าน:
 - ชื่อร้าน: It_Business
-- ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี 84000
+- ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี   84000
 - โทร: 093-5799850
 - Line: id เบอร์ร้าน
 - เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00, อาทิตย์ ปิด
 - เจ้าของร้าน: พี่เวฟ
 - พ่อเจ้าของร้าน: ลุงเดียร์
-- ใกล้โรงแรม: Thehub
+- ใกล้: Thehub
+- ใกล้: central 
+- บริเวณที่ตั้ง: ในสถานี บขส.สุราษฎร์ธานี
+
+
+
 ราคาถ่ายเอกสาร:
 ${priceText}
 
