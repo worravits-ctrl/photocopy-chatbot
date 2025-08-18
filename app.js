@@ -1,4 +1,5 @@
 require('dotenv').config();
+process.env.TZ = 'Asia/Bangkok';
 
 const express = require('express');
 const line = require('@line/bot-sdk');
@@ -96,38 +97,52 @@ loadPricesFromExcel();
 function getCurrentDateInfo() {
     const now = new Date();
     
-    // แปลงเวลาเป็น timezone ไทย
-    const bangkokTime = new Date(now.toLocaleString("en-US", {timeZone: "Asia/Bangkok"}));
-    
-    const options = { 
-        weekday: 'long', 
-        year: 'numeric', 
+    // Method 1: ใช้ Intl.DateTimeFormat
+    const thaiFormatter = new Intl.DateTimeFormat('th-TH', {
+        timeZone: 'Asia/Bangkok',
+        year: 'numeric',
         month: 'long', 
         day: 'numeric',
-        timeZone: 'Asia/Bangkok'
-    };
-    const thaiDate = bangkokTime.toLocaleDateString('th-TH', options);
-    const time = bangkokTime.toLocaleTimeString('th-TH', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        timeZone: 'Asia/Bangkok'
+        weekday: 'long'
     });
     
-    // ใช้เวลาไทยในการตรวจสอบ
-    const hour = bangkokTime.getHours();
-    const minute = bangkokTime.getMinutes();
+    // ดึงเวลาไทยแบบ parts
+    const thaiTimeParts = new Intl.DateTimeFormat('en', {
+        timeZone: 'Asia/Bangkok',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    }).formatToParts(now);
+    
+    // แปลงเป็นตัวเลข
+    const hour = parseInt(thaiTimeParts.find(part => part.type === 'hour').value);
+    const minute = parseInt(thaiTimeParts.find(part => part.type === 'minute').value);
+    const year = parseInt(thaiTimeParts.find(part => part.type === 'year').value);
+    const month = parseInt(thaiTimeParts.find(part => part.type === 'month').value);
+    const day_num = parseInt(thaiTimeParts.find(part => part.type === 'day').value);
+    
+    // สร้าง Date object สำหรับเวลาไทย
+    const bangkokTime = new Date(year, month - 1, day_num, hour, minute);
     const day = bangkokTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
     
+    const thaiDate = thaiFormatter.format(now);
+    const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    
+    // ตรวจสอบสถานะร้าน
     let isOpen = false;
     let shopHours = '';
     
     if (day >= 1 && day <= 5) { // Monday to Friday (จันทร์-ศุกร์)
         // เวลา 08:00-17:00
-        isOpen = (hour > 8) || (hour === 8 && minute >= 0) && (hour < 17);
+        isOpen = (hour >= 8 && hour < 17);
         shopHours = '08:00-17:00';
     } else if (day === 6) { // Saturday (เสาร์)
         // เวลา 09:00-17:00
-        isOpen = (hour > 9) || (hour === 9 && minute >= 0) && (hour < 17);
+        isOpen = (hour >= 9 && hour < 17);
         shopHours = '09:00-17:00';
     } else { // Sunday (อาทิตย์)
         isOpen = false;
@@ -135,13 +150,16 @@ function getCurrentDateInfo() {
     }
     
     // Debug log เพื่อตรวจสอบ
-    console.log(`Debug Shop Hours:
-        Bangkok Time: ${bangkokTime.toISOString()}
-        Local Hour: ${hour}:${minute.toString().padStart(2, '0')}
-        Day: ${day} (0=Sun, 1=Mon, ..., 6=Sat)
+    console.log(`=== Debug Shop Hours ===
+        Server Time: ${now.toISOString()}
+        Server Local: ${now.toString()}
+        Thai Time Parts: ${JSON.stringify(thaiTimeParts)}
+        Calculated Thai Time: ${year}-${month.toString().padStart(2,'0')}-${day_num.toString().padStart(2,'0')} ${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}
+        Day of week: ${day} (0=Sun, 1=Mon, ..., 6=Sat)
         Should be open: ${isOpen}
         Shop hours today: ${shopHours}
-    `);
+        Display time: ${time}
+    ========================`);
     
     return {
         date: thaiDate,
@@ -154,7 +172,7 @@ function getCurrentDateInfo() {
     };
 }
 
-// ฟังก์ชันเสริมเพื่อแสดงสถานะร้านแบบละเอียด
+// เพิ่มฟังก์ชันใหม่นี้หลังจาก getCurrentDateInfo()
 function getDetailedShopStatus() {
     const dateInfo = getCurrentDateInfo();
     const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
@@ -202,7 +220,7 @@ function getDetailedShopStatus() {
     };
 }
 
-// ปรับปรุงฟังก์ชัน getBusinessContext() ให้แสดงข้อมูลที่ถูกต้อง
+// แทนที่ฟังก์ชัน getBusinessContext() เดิม
 function getBusinessContext() {
     let priceText = '';
     priceList.forEach(item => {
@@ -217,8 +235,7 @@ function getBusinessContext() {
 - วันที่: ${shopStatus.date}
 - เวลา: ${shopStatus.time} น.
 - สถานะร้าน: ${shopStatus.statusMessage}
-
-ข้อมูลร้าน:
+- ข้อมูลร้าน:รับถ่ายเอสาร,เคลือบบัตร,printงาน จาก line,Email  
 - ชื่อร้าน: It_Business
 - ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี   84000
 - โทร: 093-5799850
