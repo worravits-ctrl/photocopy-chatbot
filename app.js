@@ -512,7 +512,7 @@ app.get('/', (req, res) => {
                 </div>
                 <div class="status connected">
                     เวลาทำการ<br>
-                    08:00-19:00
+                    08:00-17:00
                 </div>
             </div>
             
