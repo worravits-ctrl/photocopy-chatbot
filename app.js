@@ -35,6 +35,98 @@ if (channelAccessToken && channelSecret) {
     console.log('LINE Bot client skipped ⚠️ - Missing credentials');
 }
 
+// ========== เพิ่มระบบจำการสนทนา ==========
+// Memory storage for conversations
+const conversationMemory = new Map();
+const MAX_HISTORY_MESSAGES = 5;
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+// Function to add message to memory
+function addToMemory(sessionId, message, isUser = true) {
+    if (!conversationMemory.has(sessionId)) {
+        conversationMemory.set(sessionId, {
+            messages: [],
+            lastActivity: Date.now()
+        });
+    }
+    
+    const session = conversationMemory.get(sessionId);
+    session.messages.push({
+        text: message,
+        isUser: isUser,
+        timestamp: Date.now()
+    });
+    
+    // Keep only the last MAX_HISTORY_MESSAGES pairs (user + AI)
+    const maxMessages = MAX_HISTORY_MESSAGES * 2;
+    if (session.messages.length > maxMessages) {
+        session.messages = session.messages.slice(-maxMessages);
+    }
+    
+    session.lastActivity = Date.now();
+    
+    // Clean up expired sessions
+    cleanupExpiredSessions();
+}
+
+// Function to get conversation history
+function getConversationHistory(sessionId) {
+    const session = conversationMemory.get(sessionId);
+    if (!session) return '';
+    
+    // Check if session is expired
+    if (Date.now() - session.lastActivity > SESSION_TIMEOUT) {
+        conversationMemory.delete(sessionId);
+        return '';
+    }
+    
+    if (session.messages.length === 0) return '';
+    
+    let historyText = '\n\nประวัติการสนทนาล่าสุด:\n';
+    session.messages.forEach((msg, index) => {
+        const speaker = msg.isUser ? 'ลูกค้า' : 'AI';
+        historyText += `${speaker}: ${msg.text}\n`;
+    });
+    historyText += '\nกรุณาใช้ประวัติการสนทนาข้างต้นเพื่อตอบให้เหมาะสมและต่อเนื่อง\n';
+    
+    return historyText;
+}
+
+// Function to reset conversation
+function resetConversation(sessionId) {
+    conversationMemory.delete(sessionId);
+    console.log(`🔄 Reset conversation for session: ${sessionId}`);
+}
+
+// Function to clean up expired sessions
+function cleanupExpiredSessions() {
+    const now = Date.now();
+    let cleanedCount = 0;
+    
+    for (const [sessionId, session] of conversationMemory.entries()) {
+        if (now - session.lastActivity > SESSION_TIMEOUT) {
+            conversationMemory.delete(sessionId);
+            cleanedCount++;
+        }
+    }
+    
+    if (cleanedCount > 0) {
+        console.log(`🧹 Cleaned up ${cleanedCount} expired conversation sessions`);
+    }
+}
+
+// Get session ID for different sources
+function getSessionId(source, userId = null) {
+    if (source === 'web') {
+        return 'web-session';
+    } else if (source === 'line' && userId) {
+        return `line-${userId}`;
+    }
+    return `unknown-${Date.now()}`;
+}
+
+// ========== จบส่วนระบบจำการสนทนา ==========
+
 // Price data storage
 let priceData = {};
 let priceList = [];
@@ -220,14 +312,20 @@ function getDetailedShopStatus() {
     };
 }
 
-// แทนที่ฟังก์ชัน getBusinessContext() เดิม
-function getBusinessContext() {
+// ปรับปรุงฟังก์ชัน getBusinessContext() ให้รวมประวัติการสนทนา
+function getBusinessContext(sessionId = null) {
     let priceText = '';
     priceList.forEach(item => {
         priceText += `- ${item.ขนาด} ${item.ประเภท} ${item.รูปแบบ}: ${item.ราคา} บาท/แผ่น\n`;
     });
 
     const shopStatus = getDetailedShopStatus();
+    
+    // เพิ่มประวัติการสนทนาถ้ามี sessionId
+    let conversationHistory = '';
+    if (sessionId) {
+        conversationHistory = getConversationHistory(sessionId);
+    }
 
     return `คุณเป็นผู้ช่วย AI ของร้าน "It_Business" ร้านถ่ายเอกสารและปริ้นท์คุณภาพสูง
 
@@ -251,15 +349,17 @@ function getBusinessContext() {
 ${priceText}
 
 โปรโมชั่น:
-- 100 แผ่นขึ้นไป ลด 10%
-- 500 แผ่นขึ้นไป ลด 15%
-- 1000 แผ่นขึ้นไป ลด 20%
+- 100 แผ่นขึ้นไป ลด 25%
+- 500 แผ่นขึ้นไป ลด 30%
+- 1000 แผ่นขึ้นไป ลด 35%
 
 บริการอื่นๆ:
 - เข้าเล่ม: 20-100 บาท
 - สแกนเอกสาร: 3-5 บาท/หน้า
 - ลามิเนต: 10-40 บาท
 - พิมพ์ภาพ: 5-50 บาท
+
+${conversationHistory}
 
 กรุณาตอบคำถามอย่างเป็นมิตร สุภาพ ใช้คำลงท้าย "ค่ะ" และใช้อีโมจิเมื่อเหมาะสม`;
 }
@@ -311,8 +411,8 @@ function calculatePrice(paperSize, colorType, printType, sheets) {
     };
 }
 
-// Call Gemini AI
-async function callGeminiAI(userMessage) {
+// ปรับปรุง Call Gemini AI function ให้รวมประวัติการสนทนา
+async function callGeminiAI(userMessage, sessionId = null) {
     if (!geminiApiKey) {
         return {
             success: false,
@@ -323,7 +423,7 @@ async function callGeminiAI(userMessage) {
     try {
         const fetch = (await import('node-fetch')).default;
         
-        const prompt = `${getBusinessContext()}\n\nลูกค้าถาม: ${userMessage}\n\nตอบ:`;
+        const prompt = `${getBusinessContext(sessionId)}\n\nลูกค้าถาม: ${userMessage}\n\nตอบ:`;
         
         const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + geminiApiKey, {
             method: 'POST',
@@ -367,9 +467,25 @@ async function callGeminiAI(userMessage) {
     }
 }
 
-// Parse message
-async function parseMessage(message) {
+// ปรับปรุง Parse message function ให้รองรับการจัดเก็บประวัติ
+async function parseMessage(message, sessionId = null, source = 'web') {
     const text = message.toLowerCase();
+    
+    // เก็บข้อความของผู้ใช้ลงใน memory
+    if (sessionId) {
+        addToMemory(sessionId, message, true);
+    }
+    
+    // ตรวจสอบคำสั่งรีเซ็ต
+    if (text.includes('รีเซ็ต') || text.includes('reset') || text.includes('เริ่มใหม่') || text.includes('clear')) {
+        if (sessionId) {
+            resetConversation(sessionId);
+        }
+        return {
+            type: 'reset',
+            response: '🔄 รีเซ็ตการสนทนาเรียบร้อยแล้วค่ะ เริ่มการสนทนาใหม่ได้เลยค่ะ'
+        };
+    }
     
     // Date/time queries
     if (text.includes('วันนี้') || text.includes('วันอะไร') || text.includes('กี่โมง') || text.includes('เวลา')) {
@@ -381,18 +497,32 @@ async function parseMessage(message) {
             response += `📋 เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00, อาทิตย์ ปิด`;
         }
         
-        return {
+        const result = {
             type: 'datetime',
             response: response
         };
+        
+        // เก็บคำตอบลงใน memory
+        if (sessionId) {
+            addToMemory(sessionId, response, false);
+        }
+        
+        return result;
     }
     
     // Price list request
     if (text.includes('ราคา') && (text.includes('ตาราง') || text.includes('ทั้งหมด'))) {
-        return {
+        const result = {
             type: 'price_list',
             response: generatePriceTable()
         };
+        
+        // เก็บคำตอบลงใน memory
+        if (sessionId) {
+            addToMemory(sessionId, result.response, false);
+        }
+        
+        return result;
     }
 
     // Price calculation
@@ -418,18 +548,33 @@ async function parseMessage(message) {
         
         if (sheets > 0) {
             const result = calculatePrice(detectedSize, colorType, printType, sheets);
-            return {
+            
+            const finalResult = {
                 type: 'price',
                 response: result.response
             };
+            
+            // เก็บคำตอบลงใน memory
+            if (sessionId) {
+                addToMemory(sessionId, result.response, false);
+            }
+            
+            return finalResult;
         }
     }
 
-    // AI response
-    const aiResult = await callGeminiAI(message);
+    // AI response with conversation history
+    const aiResult = await callGeminiAI(message, sessionId);
+    const finalResponse = aiResult.success ? aiResult.message : 'สวัสดีค่ะ! 👋 ยินดีให้บริการร้าน It-Business ค่ะ\n\n📄 เรามีบริการถ่ายเอกสาร พิมพ์งาน และบริการอื่นๆ\n🤖 สามารถคำนวณราคาและสอบถามข้อมูลได้เลยค่ะ\n\nมีอะไรให้ช่วยไหมคะ?';
+    
+    // เก็บคำตอบลงใน memory
+    if (sessionId) {
+        addToMemory(sessionId, finalResponse, false);
+    }
+    
     return {
         type: 'ai',
-        response: aiResult.success ? aiResult.message : 'สวัสดีค่ะ! 👋 ยินดีให้บริการร้าน It-Business ค่ะ\n\n📄 เรามีบริการถ่ายเอกสาร พิมพ์งาน และบริการอื่นๆ\n🤖 สามารถคำนวณราคาและสอบถามข้อมูลได้เลยค่ะ\n\nมีอะไรให้ช่วยไหมคะ?'
+        response: finalResponse
     };
 }
 
@@ -638,6 +783,37 @@ app.get('/', (req, res) => {
                 background: white;
                 color: #667eea;
                 font-weight: bold;
+            }
+
+            /* Memory Status */
+            .memory-status {
+                background: rgba(255,255,255,0.1);
+                border-radius: 15px;
+                padding: 15px;
+                text-align: center;
+                color: white;
+                margin-bottom: 20px;
+                border: 1px solid rgba(255,255,255,0.2);
+            }
+            
+            .memory-status .memory-icon {
+                font-size: 24px;
+                margin-bottom: 10px;
+                display: block;
+                color: #00ff88;
+            }
+            
+            /* Reset Button */
+            .reset-btn {
+                background: var(--danger) !important;
+                color: white !important;
+                margin-top: 10px;
+                font-weight: bold;
+            }
+            
+            .reset-btn:hover {
+                background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%) !important;
+                transform: translateY(-2px);
             }
             
             /* Shop Status */
@@ -879,6 +1055,10 @@ app.get('/', (req, res) => {
                     <div class="status-dot ${geminiApiKey ? 'status-connected' : 'status-disconnected'}"></div>
                     <span>Gemini AI</span>
                 </div>
+                <div class="status-item">
+                    <div class="status-dot status-connected"></div>
+                    <span>Memory (${MAX_HISTORY_MESSAGES} msgs)</span>
+                </div>
             </div>
             <div class="status-item">
                 <i class="fas fa-database"></i>
@@ -892,6 +1072,16 @@ app.get('/', (req, res) => {
                 <div class="logo">
                     <h1><i class="fas fa-print"></i> It-Business</h1>
                     <p>Smart Document Center</p>
+                </div>
+
+                <!-- Memory Status -->
+                <div class="memory-status">
+                    <i class="fas fa-brain memory-icon"></i>
+                    <div><strong>ระบบจำการสนทนา</strong></div>
+                    <div style="font-size: 12px; margin-top: 5px;">
+                        จำได้ ${MAX_HISTORY_MESSAGES} ข้อความย้อนหลัง<br>
+                        Session: <span id="sessionCount">${conversationMemory.size}</span> active
+                    </div>
                 </div>
 
                 <div class="menu-section">
@@ -945,6 +1135,15 @@ app.get('/', (req, res) => {
                     </button>
                 </div>
 
+                <div class="menu-section">
+                    <div class="menu-title">
+                        <i class="fas fa-brain"></i> การสนทนา
+                    </div>
+                    <button class="menu-btn reset-btn" onclick="resetConversation()">
+                        <i class="fas fa-refresh"></i> รีเซ็ตการสนทนา
+                    </button>
+                </div>
+
                 <!-- Shop Status -->
                 <div class="shop-status" id="shopStatus">
                     <i class="fas fa-store status-icon"></i>
@@ -960,7 +1159,7 @@ app.get('/', (req, res) => {
             <div class="main-content">
                 <div class="chat-header">
                     <h2>🤖 AI Assistant</h2>
-                    <p>ยินดีให้บริการข้อมูลและคำนวณราคา</p>
+                    <p>ยินดีให้บริการข้อมูลและคำนวณราคา (จำการสนทนาได้ ${MAX_HISTORY_MESSAGES} ข้อความ)</p>
                 </div>
 
                 <div class="quick-actions">
@@ -984,8 +1183,9 @@ app.get('/', (req, res) => {
 
                 <div class="chat-container" id="chat">
                     <div class="message bot">
-                        สวัสดีค่ะ! 👋 ยินดีต้อนรับสู่ <strong>It-Business</strong><br>
+                        สวัสดีค่ะ! ยินดีต้อนรับสู่ <strong>It-Business</strong><br>
                         ระบบถ่ายเอกสารอัจฉริยะ พร้อมให้บริการคำนวณราคาและข้อมูลต่างๆ ค่ะ<br><br>
+                        <strong>🧠 ระบบจำการสนทนา:</strong> ฉันจะจำการสนทนาของเราได้ ${MAX_HISTORY_MESSAGES} ข้อความย้อนหลัง<br>
                         <strong>🎯 ลองคลิกเมนูด้านซ้าย หรือปุ่มด้านบนเพื่อเริ่มต้น!</strong><br>
                         <small>💡 ตัวอย่าง: "A4 ขาวดำ 100 แผ่น" หรือ "ราคาเข้าเล่ม"</small>
                     </div>
@@ -993,7 +1193,7 @@ app.get('/', (req, res) => {
 
                 <div class="input-section">
                     <div class="input-group">
-                        <input type="text" id="input" placeholder="💬 พิมพ์คำถามของคุณ..." onkeypress="if(event.key==='Enter') send()">
+                        <input type="text" id="input" placeholder="💬 พิมพ์คำถามของคุณ... (ฉันจะจำการสนทนานี้)" onkeypress="if(event.key==='Enter') send()">
                         <button class="send-btn" onclick="send()">
                             <i class="fas fa-paper-plane"></i>
                             ส่ง
@@ -1039,7 +1239,7 @@ app.get('/', (req, res) => {
                 const div = document.createElement('div');
                 div.className = 'message bot';
                 div.id = 'typing-indicator';
-                div.innerHTML = '<div class="typing"></div> กำลังพิมพ์...';
+                div.innerHTML = '<div class="typing"></div> กำลังคิด... (อ่านประวัติการสนทนา)';
                 chat.appendChild(div);
                 chat.scrollTop = chat.scrollHeight;
             }
@@ -1068,6 +1268,9 @@ app.get('/', (req, res) => {
                     const data = await response.json();
                     removeTyping();
                     addMessage(data.reply || '❌ ขออภัย เกิดข้อผิดพลาด', false);
+                    
+                    // Update session count
+                    updateSessionCount();
                 } catch (error) {
                     removeTyping();
                     addMessage('🔌 ไม่สามารถเชื่อมต่อได้ กรุณาลองใหม่ในภายหลัง', false);
@@ -1079,13 +1282,54 @@ app.get('/', (req, res) => {
                 send();
             }
 
+            // ฟังก์ชันรีเซ็ตการสนทนา
+            async function resetConversation() {
+                if (confirm('คุณต้องการรีเซ็ตการสนทนาใหม่หรือไม่?')) {
+                    try {
+                        const response = await fetch('/reset-conversation', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        
+                        const data = await response.json();
+                        
+                        // ล้างข้อความในหน้าจอ
+                        const chat = document.getElementById('chat');
+                        chat.innerHTML = '<div class="message bot">🔄 รีเซ็ตการสนทนาเรียบร้อยแล้วค่ะ เริ่มการสนทนาใหม่ได้เลยค่ะ</div>';
+                        
+                        // Update session count
+                        updateSessionCount();
+                        
+                        console.log('Conversation reset:', data);
+                    } catch (error) {
+                        console.error('Reset error:', error);
+                        addMessage('❌ ไม่สามารถรีเซ็ตได้ กรุณาลองใหม่', false);
+                    }
+                }
+            }
+
+            // อัพเดตจำนวน session
+            async function updateSessionCount() {
+                try {
+                    const response = await fetch('/api/memory-stats');
+                    const data = await response.json();
+                    document.getElementById('sessionCount').textContent = data.sessionCount || 0;
+                } catch (error) {
+                    console.error('Error updating session count:', error);
+                }
+            }
+
             // เรียกใช้เมื่อโหลดหน้า
             document.addEventListener('DOMContentLoaded', function() {
                 updateShopStatus();
+                updateSessionCount();
                 document.getElementById('input').focus();
                 
                 // อัปเดตสถานะร้านทุก 1 นาที
                 setInterval(updateShopStatus, 60000);
+                
+                // อัปเดต session count ทุก 30 วินาที
+                setInterval(updateSessionCount, 30000);
             });
         </script>
     </body>
@@ -1095,14 +1339,34 @@ app.get('/', (req, res) => {
     res.send(html);
 });
 
-// Chat API
+// Chat API - ปรับปรุงเพื่อใช้ระบบประวัติการสนทนา
 app.post('/chat', express.json(), async (req, res) => {
     try {
-        const result = await parseMessage(req.body.message);
+        const sessionId = getSessionId('web');
+        const result = await parseMessage(req.body.message, sessionId, 'web');
         res.json({ reply: result.response });
     } catch (error) {
         console.error('Chat error:', error);
         res.json({ reply: 'ขออภัยค่ะ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง' });
+    }
+});
+
+// API สำหรับรีเซ็ตการสนทนา
+app.post('/reset-conversation', express.json(), (req, res) => {
+    try {
+        const sessionId = getSessionId('web');
+        resetConversation(sessionId);
+        res.json({ 
+            success: true, 
+            message: 'รีเซ็ตการสนทนาเรียบร้อยแล้ว',
+            sessionId: sessionId
+        });
+    } catch (error) {
+        console.error('Reset conversation error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'เกิดข้อผิดพลาดในการรีเซ็ต' 
+        });
     }
 });
 
@@ -1118,13 +1382,46 @@ app.get('/api/shop-status', (req, res) => {
     });
 });
 
+// API สำหรับดูสถิติหน่วยความจำ
+app.get('/api/memory-stats', (req, res) => {
+    try {
+        // ทำความสะอาดก่อนนับ
+        cleanupExpiredSessions();
+        
+        let totalMessages = 0;
+        for (const session of conversationMemory.values()) {
+            totalMessages += session.messages.length;
+        }
+        
+        res.json({
+            success: true,
+            sessionCount: conversationMemory.size,
+            totalMessages: totalMessages,
+            maxHistoryPerSession: MAX_HISTORY_MESSAGES,
+            sessionTimeoutMinutes: SESSION_TIMEOUT / 60000
+        });
+    } catch (error) {
+        console.error('Memory stats error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'ไม่สามารถดึงข้อมูลสถิติได้'
+        });
+    }
+});
+
 // Health check
 app.get('/health', (req, res) => {
+    cleanupExpiredSessions();
     res.json({ 
         status: 'OK',
         prices: priceList.length,
         ai: geminiApiKey ? 'ready' : 'not configured',
         line: client ? 'connected' : 'not configured',
+        memory: {
+            active: true,
+            sessions: conversationMemory.size,
+            maxHistoryPerSession: MAX_HISTORY_MESSAGES
+        },
         timestamp: new Date().toISOString()
     });
 });
@@ -1144,7 +1441,7 @@ app.get('/test', (req, res) => {
     res.redirect('/');
 });
 
-// LINE webhook
+// LINE webhook - ปรับปรุงเพื่อใช้ระบบประวัติการสนทนา
 if (client && lineConfig) {
     app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
         try {
@@ -1162,7 +1459,9 @@ if (client && lineConfig) {
         }
 
         try {
-            const result = await parseMessage(event.message.text);
+            // สร้าง session key สำหรับผู้ใช้ LINE แต่ละคน
+            const sessionId = getSessionId('line', event.source.userId);
+            const result = await parseMessage(event.message.text, sessionId, 'line');
             
             return client.replyMessage(event.replyToken, {
                 type: 'text',
@@ -1205,6 +1504,15 @@ app.use('*', (req, res) => {
     });
 });
 
+// ทำความสะอาด session หมดอายุทุก 10 นาที
+setInterval(() => {
+    try {
+        cleanupExpiredSessions();
+    } catch (error) {
+        console.error('Cleanup interval error:', error);
+    }
+}, 10 * 60 * 1000);
+
 // Start server
 app.listen(port, () => {
     console.log(`
@@ -1215,8 +1523,29 @@ app.listen(port, () => {
 📊 Prices: ${priceList.length} items loaded
 🤖 AI: ${geminiApiKey ? 'Ready' : 'Not configured'}
 📱 LINE: ${client ? 'Connected' : 'Not configured'}
+🧠 Memory: ${MAX_HISTORY_MESSAGES} messages per session, ${SESSION_TIMEOUT/60000} min timeout
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
 ⏰ Timezone: ${process.env.TZ || 'System default'}
+
+🎯 New Features Added:
+✅ Conversation Memory System
+   - Remembers last ${MAX_HISTORY_MESSAGES} messages per session
+   - Separate sessions for Web and LINE users
+   - Auto cleanup expired sessions (${SESSION_TIMEOUT/60000} min)
+   - Reset conversation functionality
+   
+📋 API Endpoints:
+• POST /chat - Send message (with memory)
+• POST /reset-conversation - Reset conversation
+• GET  /api/shop-status - Shop status
+• GET  /api/memory-stats - Memory statistics
+• GET  /health - Health check
+• POST /webhook - LINE Bot webhook
+
+🔧 Memory Management:
+• Active sessions: ${conversationMemory.size}
+• Auto cleanup every 10 minutes
+• Session timeout: ${SESSION_TIMEOUT/60000} minutes
 ========================================
     `);
 });
