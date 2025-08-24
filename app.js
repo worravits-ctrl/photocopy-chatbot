@@ -376,13 +376,13 @@ function calculatePrice(paperSize, colorType, printType, sheets) {
         
         if (sheets >= 1000) {
             discount = totalPrice * 0.20;
-            discountText = ' (ลด 20%)';
+            discountText = ' (ลด 35%)';
         } else if (sheets >= 500) {
             discount = totalPrice * 0.15;
-            discountText = ' (ลด 15%)';
+            discountText = ' (ลด 30%)';
         } else if (sheets >= 100) {
             discount = totalPrice * 0.10;
-            discountText = ' (ลด 10%)';
+            discountText = ' (ลด 25%)';
         }
         
         const finalPrice = totalPrice - discount;
@@ -618,9 +618,9 @@ function generatePriceTable() {
 
     // เพิ่มโปรโมชั่น
     table += '\n🎉 โปรโมชั่นส่วนลด:\n';
-    table += '• 100+ แผ่น ลด 10% 💥\n';
-    table += '• 500+ แผ่น ลด 15% 🔥\n';
-    table += '• 1000+ แผ่น ลด 20% 🎯\n\n';
+    table += '• 100+ แผ่น ลด 25% 💥\n';
+    table += '• 500+ แผ่น ลด 30% 🔥\n';
+    table += '• 1000+ แผ่น ลด 35% 🎯\n\n';
     
     table += '📞 สอบถามเพิ่มเติม: 093-5799850';
     
