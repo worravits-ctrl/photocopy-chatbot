@@ -1056,14 +1056,6 @@ app.get('/', (req, res) => {
                     <div class="status-dot ${client ? 'status-connected' : 'status-disconnected'}"></div>
                     <span>LINE Bot</span>
                 </div>
-                <div class="status-item">
-                    <div class="status-dot status-connected"></div>
-                    <span>Gemini AI</span>
-                </div>
-                <div class="status-item">
-                    <div class="status-dot status-connected"></div>
-                    <span>Memory (${MAX_HISTORY_MESSAGES} msgs)</span>
-                </div>
             </div>
             <div class="status-item">
                 <i class="fas fa-database"></i>
@@ -1079,15 +1071,7 @@ app.get('/', (req, res) => {
                     <p>Smart Document Center</p>
                 </div>
 
-                <!-- Memory Status -->
-                <div class="memory-status">
-                    <i class="fas fa-brain memory-icon"></i>
-                    <div><strong>ระบบจำการสนทนา</strong></div>
-                    <div style="font-size: 12px; margin-top: 5px;">
-                        จำได้ ${MAX_HISTORY_MESSAGES} ข้อความย้อนหลัง<br>
-                        Session: <span id="sessionCount">${conversationMemory.size}</span> active
-                    </div>
-                </div>
+
 
                 <div class="menu-section">
                     <div class="menu-title">
@@ -1163,24 +1147,24 @@ app.get('/', (req, res) => {
             <!-- Main Content -->
             <div class="main-content">
                 <div class="chat-header">
-                    <h2>🤖 AI Assistant</h2>
-                    <p>ยินดีให้บริการข้อมูลและคำนวณราคา (จำการสนทนาได้ ${MAX_HISTORY_MESSAGES} ข้อความ)</p>
+                    <h2>🤖 Smart Assistant</h2>
+                    <p>ยินดีให้บริการข้อมูลและคำนวณราคาถ่ายเอกสาร</p>
                 </div>
 
                 <div class="quick-actions">
-                    <div class="quick-btn" onclick="sendQuickMessage('วันนี้วันอะไร')">
-                        <i class="fas fa-calendar-day"></i>
-                        <span>วันนี้วันอะไร</span>
+                    <div class="quick-btn" onclick="sendQuickMessage('ราคาถ่ายเอกสาร')">
+                        <i class="fas fa-copy"></i>
+                        <span>ราคาถ่ายเอกสาร</span>
                     </div>
-                    <div class="quick-btn" onclick="sendQuickMessage('ร้านเปิดหรือยัง')">
-                        <i class="fas fa-store"></i>
-                        <span>สถานะร้าน</span>
+                    <div class="quick-btn" onclick="sendQuickMessage('เวลาทำการ')">
+                        <i class="fas fa-clock"></i>
+                        <span>เวลาทำการ</span>
                     </div>
-                    <div class="quick-btn" onclick="sendQuickMessage('โปรโมชั่น')">
-                        <i class="fas fa-tags"></i>
-                        <span>โปรโมชั่น</span>
+                    <div class="quick-btn" onclick="sendQuickMessage('เบอร์โทรศัพท์')">
+                        <i class="fas fa-phone"></i>
+                        <span>เบอร์โทรศัพท์</span>
                     </div>
-                    <div class="quick-btn" onclick="sendQuickMessage('มีบริการอะไรบ้าง')">
+                    <div class="quick-btn" onclick="sendQuickMessage('บริการ')">
                         <i class="fas fa-concierge-bell"></i>
                         <span>บริการทั้งหมด</span>
                     </div>
@@ -1190,15 +1174,13 @@ app.get('/', (req, res) => {
                     <div class="message bot">
                         สวัสดีค่ะ! ยินดีต้อนรับสู่ <strong>It-Business</strong><br>
                         ระบบถ่ายเอกสารอัจฉริยะ พร้อมให้บริการคำนวณราคาและข้อมูลต่างๆ ค่ะ<br><br>
-                        <strong>🧠 ระบบจำการสนทนา:</strong> ฉันจะจำการสนทนาของเราได้ ${MAX_HISTORY_MESSAGES} ข้อความย้อนหลัง<br>
-                        <strong>🎯 ลองคลิกเมนูด้านซ้าย หรือปุ่มด้านบนเพื่อเริ่มต้น!</strong><br>
-                        <small>💡 ตัวอย่าง: "A4 ขาวดำ 100 แผ่น" หรือ "ราคาเข้าเล่ม"</small>
+                        <strong>🎯 ลองคลิกเมนูด้านซ้าย หรือสอบถามได้เลยค่ะ!</strong><br>
                     </div>
                 </div>
 
                 <div class="input-section">
                     <div class="input-group">
-                        <input type="text" id="input" placeholder="💬 พิมพ์คำถามของคุณ... (ฉันจะจำการสนทนานี้)" onkeypress="if(event.key==='Enter') send()">
+                        <input type="text" id="input" placeholder="💬 พิมพ์คำถามของคุณ..." onkeypress="if(event.key==='Enter') send()">
                         <button class="send-btn" onclick="send()">
                             <i class="fas fa-paper-plane"></i>
                             ส่ง
