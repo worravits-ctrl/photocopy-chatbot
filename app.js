@@ -12,13 +12,11 @@ const app = express();
 // Environment Variables
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const channelSecret = process.env.LINE_CHANNEL_SECRET;
-const geminiApiKey = process.env.GEMINI_API_KEY;
 const port = process.env.PORT || 3000;
 
 console.log('Environment check:');
 console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? 'Set ✅' : 'Not set ❌');
 console.log('- LINE_CHANNEL_SECRET:', channelSecret ? 'Set ✅' : 'Not set ❌');
-console.log('- GEMINI_API_KEY:', geminiApiKey ? 'Set ✅' : 'Not set ❌');
 console.log('- PORT:', port);
 
 // LINE Bot Setup
@@ -413,60 +411,65 @@ function calculatePrice(paperSize, colorType, printType, sheets) {
     };
 }
 
-// ปรับปรุง Call Gemini AI function ให้รวมประวัติการสนทนา
-async function callGeminiAI(userMessage, sessionId = null) {
-    if (!geminiApiKey) {
+// ระบบตอบกลับอัตโนมัติแบบออฟไลน์
+function getOfflineResponse(userMessage, sessionId = null) {
+    const message = userMessage.toLowerCase();
+    
+    // คำตอบสำหรับคำถามทั่วไป
+    if (message.includes('สวัสดี') || message.includes('หวัดดี')) {
         return {
-            success: false,
-            message: 'ขออภัยค่ะ ระบบ AI ไม่พร้อมใช้งานในขณะนี้'
+            success: true,
+            message: 'สวัสดีค่ะ! ยินดีต้อนรับสู่ร้านถ่ายเอกสาร 🏪 มีอะไรให้ช่วยเหลือไหมคะ'
         };
     }
-
-    try {
-        const fetch = (await import('node-fetch')).default;
-        
-        const prompt = `${getBusinessContext(sessionId)}\n\nลูกค้าถาม: ${userMessage}\n\nตอบ:`;
-        
-        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + geminiApiKey, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{
-                        text: prompt
-                    }]
-                }],
-                generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 500,
-                }
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`API request failed with status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        
-        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-            return {
-                success: true,
-                message: data.candidates[0].content.parts[0].text
-            };
-        }
-        
-        throw new Error('Invalid response format from AI');
-
-    } catch (error) {
-        console.error('Gemini AI Error:', error);
+    
+    if (message.includes('ขอบคุณ') || message.includes('thank')) {
         return {
-            success: false,
-            message: 'ขออภัยค่ะ เกิดข้อผิดพลาดกับระบบ AI กรุณาลองใหม่อีกครั้ง หรือติดต่อเจ้าหน้าที่ได้เลยค่ะ'
+            success: true,
+            message: 'ยินดีค่ะ! หากมีคำถามเพิ่มเติม สามารถสอบถามได้เสมอนะคะ 😊'
         };
     }
+    
+    if (message.includes('ราคา') || message.includes('เท่าไหร่') || message.includes('price')) {
+        return {
+            success: true,
+            message: 'สำหรับราคาการถ่ายเอกสาร กรุณาระบุ:\n📋 ขนาดกระดาษ (A4, A3, A5)\n🖨️ ประเภท (ขาวดำ, สี)\n📄 รูปแบบ (หน้าเดียว, สองหน้า)\n\nหรือพิมพ์ "ดูราคา" เพื่อดูตารางราคาทั้งหมดค่ะ'
+        };
+    }
+    
+    if (message.includes('เวลา') || message.includes('เปิด') || message.includes('ปิด') || message.includes('time')) {
+        return {
+            success: true,
+            message: 'เวลาทำการร้าน:\n🕘 จันทร์ - ศุกร์: 09:00 - 18:00\n🕘 เสาร์: 09:00 - 16:00\n❌ วันอาทิตย์: ปิด'
+        };
+    }
+    
+    if (message.includes('เบอร์โทร') || message.includes('โทรศัพท์') || message.includes('เบอร์') || message.includes('phone') || message.includes('tel') || message.includes('โทร')) {
+        return {
+            success: true,
+            message: '📞 เบอร์โทรศัพท์ร้าน: 093-5799850\n\nโทรมาสอบถามได้ในเวลาทำการค่ะ\n🕘 จันทร์ - ศุกร์: 09:00 - 18:00\n🕘 เสาร์: 09:00 - 16:00'
+        };
+    }
+    
+    if (message.includes('ที่อยู่') || message.includes('location') || message.includes('address')) {
+        return {
+            success: true,
+            message: '📍 ที่อยู่ร้าน: [กรุณาระบุที่อยู่ของร้าน]\n📞 โทร: 093-5799850\n🌐 Facebook: [ลิงก์ Facebook Page]'
+        };
+    }
+    
+    if (message.includes('บริการ') || message.includes('service')) {
+        return {
+            success: true,
+            message: '🖨️ บริการของเรา:\n• ถ่ายเอกสาร ขาวดำ/สี\n• พิมพ์เอกสาร\n• สแกนเอกสาร\n• เข้าเล่มเอกสาร\n• ลามิเนต\n• บริการอื่นๆ ตามต้องการ'
+        };
+    }
+    
+    // ตอบกลับทั่วไป
+    return {
+        success: true,
+        message: `ขออภัยค่ะ ไม่เข้าใจคำถาม "${userMessage}" \n\n💡 คุณสามารถถามเกี่ยวกับ:\n• ราคาการถ่ายเอกสาร\n• เวลาทำการ\n• เบอร์โทรศัพท์\n• บริการต่างๆ\n• ที่อยู่ร้าน\n\nหรือพิมพ์ "ดูราคา" เพื่อดูตารางราคาทั้งหมดค่ะ`
+    };
 }
 
 // ปรับปรุง Parse message function ให้รองรับการจัดเก็บประวัติ
@@ -565,8 +568,8 @@ async function parseMessage(message, sessionId = null, source = 'web') {
         }
     }
 
-    // AI response with conversation history
-    const aiResult = await callGeminiAI(message, sessionId);
+    // ใช้ระบบตอบกลับอัตโนมัติแบบออฟไลน์
+    const aiResult = getOfflineResponse(message, sessionId);
     const finalResponse = aiResult.success ? aiResult.message : 'สวัสดีค่ะ! 👋 ยินดีให้บริการร้าน It-Business ค่ะ\n\n📄 เรามีบริการถ่ายเอกสาร พิมพ์งาน และบริการอื่นๆ\n🤖 สามารถคำนวณราคาและสอบถามข้อมูลได้เลยค่ะ\n\nมีอะไรให้ช่วยไหมคะ?';
     
     // เก็บคำตอบลงใน memory
@@ -1054,7 +1057,7 @@ app.get('/', (req, res) => {
                     <span>LINE Bot</span>
                 </div>
                 <div class="status-item">
-                    <div class="status-dot ${geminiApiKey ? 'status-connected' : 'status-disconnected'}"></div>
+                    <div class="status-dot status-connected"></div>
                     <span>Gemini AI</span>
                 </div>
                 <div class="status-item">
@@ -1417,7 +1420,7 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK',
         prices: priceList.length,
-        ai: geminiApiKey ? 'ready' : 'not configured',
+        ai: 'ready (offline mode)',
         line: client ? 'connected' : 'not configured',
         memory: {
             active: true,
@@ -1523,7 +1526,7 @@ app.listen(port, () => {
 ========================================
 🚀 Server: http://localhost:${port}
 📊 Prices: ${priceList.length} items loaded
-🤖 AI: ${geminiApiKey ? 'Ready' : 'Not configured'}
+🤖 AI: Ready (Offline Mode)
 📱 LINE: ${client ? 'Connected' : 'Not configured'}
 🧠 Memory: ${MAX_HISTORY_MESSAGES} messages per session, ${SESSION_TIMEOUT/60000} min timeout
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
