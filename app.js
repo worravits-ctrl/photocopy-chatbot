@@ -1137,6 +1137,10 @@ app.get('/', (req, res) => {
                     <div class="status-dot ${client ? 'status-connected' : 'status-disconnected'}"></div>
                     <span>LINE Bot</span>
                 </div>
+                <div class="status-item">
+                    <div class="status-dot ${openaiApiKey ? 'status-connected' : 'status-disconnected'}"></div>
+                    <span>ChatGPT AI</span>
+                </div>
             </div>
             <div class="status-item">
                 <i class="fas fa-database"></i>
