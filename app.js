@@ -12,11 +12,13 @@ const app = express();
 // Environment Variables
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const channelSecret = process.env.LINE_CHANNEL_SECRET;
+const openaiApiKey = process.env.OPENAI_API_KEY;
 const port = process.env.PORT || 3000;
 
 console.log('Environment check:');
 console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? 'Set ✅' : 'Not set ❌');
 console.log('- LINE_CHANNEL_SECRET:', channelSecret ? 'Set ✅' : 'Not set ❌');
+console.log('- OPENAI_API_KEY:', openaiApiKey ? 'Set ✅' : 'Not set ❌');
 console.log('- PORT:', port);
 
 // LINE Bot Setup
@@ -411,7 +413,86 @@ function calculatePrice(paperSize, colorType, printType, sheets) {
     };
 }
 
-// ระบบตอบกลับอัตโนมัติแบบออฟไลน์
+// ฟังก์ชันสำหรับเรียกใช้ OpenAI ChatGPT API
+async function callOpenAI(userMessage, sessionId = null) {
+    if (!openaiApiKey) {
+        return {
+            success: false,
+            message: 'ขออภัยค่ะ ระบบ AI ไม่พร้อมใช้งานในขณะนี้'
+        };
+    }
+
+    try {
+        const fetch = (await import('node-fetch')).default;
+        
+        // สร้าง context สำหรับ ChatGPT
+        const systemPrompt = `คุณเป็น AI ผู้ช่วยของร้านถ่ายเอกสาร "It-Business" ซึ่งให้บริการ:
+- ถ่ายเอกสาร (ขาวดำ/สี)
+- พิมพ์เอกสาร 
+- สแกนเอกสาร
+- เข้าเล่มเอกสาร
+- ลามิเนต
+
+ข้อมูลร้าน:
+- เบอร์โทร: 093-5799850
+- เวลาทำการ: จันทร์-ศุกร์ 09:00-18:00, เสาร์ 09:00-16:00, วันอาทิตย์ปิด
+
+ตอบด้วยภาษาไทยที่สุภาพ เป็นกันเอง และช่วยเหลือลูกค้าให้ดีที่สุด`;
+
+        // ดึงประวัติการสนทนา
+        let messages = [
+            { role: "system", content: systemPrompt }
+        ];
+        
+        if (sessionId && conversationMemory.has(sessionId)) {
+            const memory = conversationMemory.get(sessionId);
+            memory.messages.forEach(msg => {
+                messages.push({
+                    role: msg.isUser ? "user" : "assistant",
+                    content: msg.text
+                });
+            });
+        }
+        
+        messages.push({ role: "user", content: userMessage });
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiApiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-3.5-turbo',
+                messages: messages,
+                max_tokens: 500,
+                temperature: 0.7,
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`OpenAI API request failed with status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+            return {
+                success: true,
+                message: data.choices[0].message.content
+            };
+        }
+        
+        throw new Error('Invalid response format from OpenAI');
+
+    } catch (error) {
+        console.error('OpenAI API Error:', error);
+        // ถ้า API ล้มเหลว ให้ใช้ระบบออฟไลน์สำรอง
+        return getOfflineResponse(userMessage, sessionId);
+    }
+}
+
+// ระบบตอบกลับอัตโนมัติแบบออฟไลน์ (สำรอง)
 function getOfflineResponse(userMessage, sessionId = null) {
     const message = userMessage.toLowerCase();
     
@@ -568,8 +649,8 @@ async function parseMessage(message, sessionId = null, source = 'web') {
         }
     }
 
-    // ใช้ระบบตอบกลับอัตโนมัติแบบออฟไลน์
-    const aiResult = getOfflineResponse(message, sessionId);
+    // ใช้ ChatGPT หรือระบบออฟไลน์สำรอง
+    const aiResult = await callOpenAI(message, sessionId);
     const finalResponse = aiResult.success ? aiResult.message : 'สวัสดีค่ะ! 👋 ยินดีให้บริการร้าน It-Business ค่ะ\n\n📄 เรามีบริการถ่ายเอกสาร พิมพ์งาน และบริการอื่นๆ\n🤖 สามารถคำนวณราคาและสอบถามข้อมูลได้เลยค่ะ\n\nมีอะไรให้ช่วยไหมคะ?';
     
     // เก็บคำตอบลงใน memory
@@ -1402,7 +1483,7 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK',
         prices: priceList.length,
-        ai: 'ready (offline mode)',
+        ai: openaiApiKey ? 'ready (ChatGPT)' : 'ready (offline mode)',
         line: client ? 'connected' : 'not configured',
         memory: {
             active: true,
@@ -1508,7 +1589,7 @@ app.listen(port, () => {
 ========================================
 🚀 Server: http://localhost:${port}
 📊 Prices: ${priceList.length} items loaded
-🤖 AI: Ready (Offline Mode)
+🤖 AI: ${openaiApiKey ? 'Ready (ChatGPT)' : 'Ready (Offline Mode)'}
 📱 LINE: ${client ? 'Connected' : 'Not configured'}
 🧠 Memory: ${MAX_HISTORY_MESSAGES} messages per session, ${SESSION_TIMEOUT/60000} min timeout
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
