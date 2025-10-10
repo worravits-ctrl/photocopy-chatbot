@@ -12,13 +12,13 @@ const app = express();
 // Environment Variables
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const channelSecret = process.env.LINE_CHANNEL_SECRET;
-const openaiApiKey = process.env.OPENAI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY;
 const port = process.env.PORT || 3000;
 
 console.log('Environment check:');
 console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? 'Set ✅' : 'Not set ❌');
 console.log('- LINE_CHANNEL_SECRET:', channelSecret ? 'Set ✅' : 'Not set ❌');
-console.log('- OPENAI_API_KEY:', openaiApiKey ? 'Set ✅' : 'Not set ❌');
+console.log('- GEMINI_API_KEY:', geminiApiKey ? 'Set ✅' : 'Not set ❌');
 console.log('- PORT:', port);
 
 // LINE Bot Setup
@@ -375,30 +375,52 @@ function calculatePrice(paperSize, colorType, printType, sheets) {
         let totalPrice = pricePerSheet * sheets;
         let discount = 0;
         let discountText = '';
+        let isSpecialPromotion = false;
         
-        if (sheets >= 1000) {
-            discount = totalPrice * 0.20;
-            discountText = ' (ลด 35%)';
-        } else if (sheets >= 500) {
-            discount = totalPrice * 0.15;
-            discountText = ' (ลด 30%)';
-        } else if (sheets >= 100) {
-            discount = totalPrice * 0.10;
-            discountText = ' (ลด 25%)';
+        // โปรโมชั่นพิเศษ: ไม่เกิน 5 แผ่น คิดแผ่นละ 5 บาท
+        if (sheets <= 5) {
+            const promotionPrice = 5 * sheets;
+            if (promotionPrice < totalPrice) {
+                isSpecialPromotion = true;
+                discount = totalPrice - promotionPrice;
+                totalPrice = promotionPrice;
+                discountText = ' (โปรโมชั่นพิเศษ 5 บาท/แผ่น)';
+            }
         }
         
-        const finalPrice = totalPrice - discount;
+        // โปรโมชั่นปกติ (ถ้าไม่ได้ใช้โปรโมชั่นพิเศษ)
+        if (!isSpecialPromotion) {
+            if (sheets >= 1000) {
+                discount = totalPrice * 0.35;
+                discountText = ' (ลด 35%)';
+            } else if (sheets >= 500) {
+                discount = totalPrice * 0.30;
+                discountText = ' (ลด 30%)';
+            } else if (sheets >= 100) {
+                discount = totalPrice * 0.25;
+                discountText = ' (ลด 25%)';
+            }
+        }
+        
+        const finalPrice = isSpecialPromotion ? totalPrice : totalPrice - discount;
         
         let response = '💰 คำนวณราคา:\n';
         response += `📄 ${paperSize} ${colorType} ${printType}\n`;
         response += `📊 จำนวน: ${sheets} แผ่น\n`;
-        response += `💵 ราคา: ${sheets} × ${pricePerSheet} = ${totalPrice.toFixed(2)} บาท\n`;
         
-        if (discount > 0) {
-            response += `🎉 ส่วนลด${discountText}: -${discount.toFixed(2)} บาท\n`;
-            response += `✅ ราคาสุทธิ: ${finalPrice.toFixed(2)} บาท`;
+        if (isSpecialPromotion) {
+            response += `🌟 โปรโมชั่นพิเศษ: ${sheets} × 5 = ${finalPrice.toFixed(2)} บาท\n`;
+            response += `💡 ประหยัดได้: ${discount.toFixed(2)} บาท (จากราคาปกติ ${(finalPrice + discount).toFixed(2)} บาท)\n`;
+            response += `✅ ราคารวม: ${finalPrice.toFixed(2)} บาท`;
         } else {
-            response += `✅ ราคารวม: ${totalPrice.toFixed(2)} บาท`;
+            response += `💵 ราคา: ${sheets} × ${pricePerSheet} = ${(finalPrice + discount).toFixed(2)} บาท\n`;
+            
+            if (discount > 0) {
+                response += `🎉 ส่วนลด${discountText}: -${discount.toFixed(2)} บาท\n`;
+                response += `✅ ราคาสุทธิ: ${finalPrice.toFixed(2)} บาท`;
+            } else {
+                response += `✅ ราคารวม: ${finalPrice.toFixed(2)} บาท`;
+            }
         }
         
         return {
@@ -413,9 +435,9 @@ function calculatePrice(paperSize, colorType, printType, sheets) {
     };
 }
 
-// ฟังก์ชันสำหรับเรียกใช้ OpenAI ChatGPT API
-async function callOpenAI(userMessage, sessionId = null) {
-    if (!openaiApiKey) {
+// ฟังก์ชันสำหรับเรียกใช้ Gemini AI API
+async function callGeminiAI(userMessage, sessionId = null) {
+    if (!geminiApiKey) {
         return {
             success: false,
             message: 'ขออภัยค่ะ ระบบ AI ไม่พร้อมใช้งานในขณะนี้'
@@ -425,8 +447,16 @@ async function callOpenAI(userMessage, sessionId = null) {
     try {
         const fetch = (await import('node-fetch')).default;
         
-        // สร้าง context สำหรับ ChatGPT
-        const systemPrompt = `คุณเป็น AI ผู้ช่วยของร้านถ่ายเอกสาร "It-Business" ซึ่งให้บริการ:
+        // สร้าง context สำหรับ Gemini AI
+        let conversationHistory = '';
+        if (sessionId && conversationMemory.has(sessionId)) {
+            const memory = conversationMemory.get(sessionId);
+            conversationHistory = memory.messages.map(msg => 
+                `${msg.isUser ? 'ลูกค้า' : 'AI'}: ${msg.text}`
+            ).join('\n');
+        }
+
+        const prompt = `คุณเป็น AI ผู้ช่วยของร้านถ่ายเอกสาร "It-Business" ซึ่งให้บริการ:
 - ถ่ายเอกสาร (ขาวดำ/สี)
 - พิมพ์เอกสาร 
 - สแกนเอกสาร
@@ -437,60 +467,58 @@ async function callOpenAI(userMessage, sessionId = null) {
 - เบอร์โทร: 093-5799850
 - เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00, วันอาทิตย์ ปิด
 
+โปรโมชั่นปัจจุบัน:
+🌟 โปรโมชั่นพิเศษ: ถ่ายเอกสาร สี/ขาวดำ ทุกขนาด ไม่เกิน 5 แผ่น = 5 บาท/แผ่น
+- ลดราคา 100+ แผ่น ลด 25%
+- ลดราคา 500+ แผ่น ลด 30% 
+- ลดราคา 1000+ แผ่น ลด 35%
+
 สำคัญ: 
 - ห้ามตอบคำถามเกี่ยวกับวันที่ เวลา หรือข้อมูลปัจจุบัน เพราะระบบจะจัดการให้เอง
 - ตอบข้อคำถามเกี่ยวกับบริการร้าน ราคา และข้อมูลทั่วไป เท่านั้น
+- เมื่อลูกค้าถามเกี่ยวกับโปรโมชั่น ให้แจ้งโปรโมชั่นพิเศษ 5 บาท/แผ่น สำหรับไม่เกิน 5 แผ่นก่อนเสมอ
 - ตอบสั้น กระชับ ไปตรงประเด็น
-- ใช้ภาษาไทยที่สุภาพ เป็นกันเอง`;
+- ใช้ภาษาไทยที่สุภาพ เป็นกันเอง
 
-        // ดึงประวัติการสนทนา
-        let messages = [
-            { role: "system", content: systemPrompt }
-        ];
-        
-        if (sessionId && conversationMemory.has(sessionId)) {
-            const memory = conversationMemory.get(sessionId);
-            memory.messages.forEach(msg => {
-                messages.push({
-                    role: msg.isUser ? "user" : "assistant",
-                    content: msg.text
-                });
-            });
-        }
-        
-        messages.push({ role: "user", content: userMessage });
+${conversationHistory ? `ประวัติการสนทนา:\n${conversationHistory}\n\n` : ''}ลูกค้าถาม: ${userMessage}
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+ตอบ:`;
+
+        const response = await fetch('https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=' + geminiApiKey, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${openaiApiKey}`
             },
             body: JSON.stringify({
-                model: 'gpt-3.5-turbo',
-                messages: messages,
-                max_tokens: 500,
-                temperature: 0.7,
+                contents: [{
+                    parts: [{
+                        text: prompt
+                    }]
+                }],
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 500,
+                }
             })
         });
 
         if (!response.ok) {
-            throw new Error(`OpenAI API request failed with status: ${response.status}`);
+            throw new Error(`Gemini API request failed with status: ${response.status}`);
         }
 
         const data = await response.json();
         
-        if (data.choices && data.choices[0] && data.choices[0].message) {
+        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
             return {
                 success: true,
-                message: data.choices[0].message.content
+                message: data.candidates[0].content.parts[0].text
             };
         }
         
-        throw new Error('Invalid response format from OpenAI');
+        throw new Error('Invalid response format from Gemini API');
 
     } catch (error) {
-        console.error('OpenAI API Error:', error);
+        console.error('Gemini AI Error:', error);
         // ถ้า API ล้มเหลว ให้ใช้ระบบออฟไลน์สำรอง
         return getOfflineResponse(userMessage, sessionId);
     }
@@ -550,10 +578,17 @@ function getOfflineResponse(userMessage, sessionId = null) {
         };
     }
     
+    if (message.includes('โปรโมชั่น') || message.includes('ส่วนลด') || message.includes('promotion') || message.includes('discount') || message.includes('ลดราคา')) {
+        return {
+            success: true,
+            message: '🎉 โปรโมชั่นพิเศษปัจจุบัน:\n\n🌟 โปรโมชั่นพิเศษ: ถ่ายเอกสาร สี/ขาวดำ ทุกขนาด\n   ไม่เกิน 5 แผ่น = 5 บาท/แผ่น เท่านั้น! 💥\n\n💰 ส่วนลดจำนวนมาก:\n• 100+ แผ่น ลด 25% 💥\n• 500+ แผ่น ลด 30% 🔥\n• 1000+ แผ่น ลด 35% 🎯\n\n📞 สอบถามเพิ่มเติม: 093-5799850'
+        };
+    }
+    
     // ตอบกลับทั่วไป
     return {
         success: true,
-        message: `ขออภัยค่ะ ไม่เข้าใจคำถาม "${userMessage}" \n\n💡 คุณสามารถถามเกี่ยวกับ:\n• ราคาการถ่ายเอกสาร\n• เวลาทำการ\n• เบอร์โทรศัพท์\n• บริการต่างๆ\n• ที่อยู่ร้าน\n\nหรือพิมพ์ "ดูราคา" เพื่อดูตารางราคาทั้งหมดค่ะ`
+        message: `ขออภัยค่ะ ไม่เข้าใจคำถาม "${userMessage}" \n\n💡 คุณสามารถถามเกี่ยวกับ:\n• ราคาการถ่ายเอกสาร\n• โปรโมชั่นและส่วนลด\n• เวลาทำการ\n• เบอร์โทรศัพท์\n• บริการต่างๆ\n• ที่อยู่ร้าน\n\nหรือพิมพ์ "ดูราคา" เพื่อดูตารางราคาทั้งหมดค่ะ`
     };
 }
 
@@ -619,10 +654,27 @@ async function parseMessage(message, sessionId = null, source = 'web') {
     }
     
     // Price list request
-    if (text.includes('ราคา') && (text.includes('ตาราง') || text.includes('ทั้งหมด'))) {
+    if (text.includes('ราคา') && (text.includes('ตาราง') || text.includes('ทั้งหมด')) || text.includes('ดูราคา')) {
         const result = {
             type: 'price_list',
             response: generatePriceTable()
+        };
+        
+        // เก็บคำตอบลงใน memory
+        if (sessionId) {
+            addToMemory(sessionId, result.response, false);
+        }
+        
+        return result;
+    }
+    
+    // โปรโมชั่นและส่วนลด
+    if (text.includes('โปรโมชั่น') || text.includes('ส่วนลด') || text.includes('promotion') || text.includes('discount')) {
+        const promotionResponse = '🎉 โปรโมชั่นพิเศษปัจจุบัน:\n\n🌟 โปรโมชั่นพิเศษ: ถ่ายเอกสาร สี/ขาวดำ ทุกขนาด\n   ไม่เกิน 5 แผ่น = 5 บาท/แผ่น เท่านั้น! 💥\n\n💰 ส่วนลดจำนวนมาก:\n• 100+ แผ่น ลด 25% 💥\n• 500+ แผ่น ลด 30% 🔥\n• 1000+ แผ่น ลด 35% 🎯\n\n📞 สอบถามเพิ่มเติม: 093-5799850';
+        
+        const result = {
+            type: 'promotion',
+            response: promotionResponse
         };
         
         // เก็บคำตอบลงใน memory
@@ -644,6 +696,41 @@ async function parseMessage(message, sessionId = null, source = 'web') {
         if (text.includes(key)) {
             detectedSize = value;
             break;
+        }
+    }
+    
+    // ตรวจสอบคำถามเกี่ยวกับการถ่ายเอกสารโดยทั่วไป (ไม่ระบุขนาด)
+    if (hasNumber && (text.includes('ถ่าย') || text.includes('copy')) && !detectedSize) {
+        const numbers = message.match(/\d+/g);
+        const sheets = Math.max(...numbers.map(n => parseInt(n)));
+        
+        if (sheets > 0 && sheets <= 5) {
+            // ใช้โปรโมชั่นพิเศษ 5 บาท/แผ่น
+            const promotionPrice = sheets * 5;
+            const result = {
+                type: 'promotion_price',
+                response: `💰 คำนวณราคา (โปรโมชั่นพิเศษ):\n📄 ถ่ายเอกสาร ${sheets} แผ่น\n🌟 โปรโมชั่น: ไม่เกิน 5 แผ่น = 5 บาท/แผ่น\n✅ ราคารวม: ${promotionPrice} บาท\n\n💡 หากต้องการราคาที่แม่นยำ กรุณาระบุ:\n📋 ขนาด (A4, A3, A5)\n🖨️ ประเภท (สี, ขาวดำ)\n📄 รูปแบบ (หน้าเดียว, สองหน้า)`
+            };
+            
+            // เก็บคำตอบลงใน memory
+            if (sessionId) {
+                addToMemory(sessionId, result.response, false);
+            }
+            
+            return result;
+        } else if (sheets > 5) {
+            // แนะนำให้ระบุขนาดสำหรับราคาที่แม่นยำ
+            const result = {
+                type: 'price_inquiry',
+                response: `💰 สำหรับ ${sheets} แผ่น กรุณาระบุรายละเอียดเพื่อราคาที่แม่นยำ:\n📋 ขนาดกระดาษ (A4, A3, A5)\n🖨️ ประเภท (สี, ขาวดำ)\n📄 รูปแบบ (หน้าเดียว, สองหน้า)\n\nหรือพิมพ์ "ดูราคา" เพื่อดูตารางราคาทั้งหมดค่ะ`
+            };
+            
+            // เก็บคำตอบลงใน memory
+            if (sessionId) {
+                addToMemory(sessionId, result.response, false);
+            }
+            
+            return result;
         }
     }
     
@@ -671,8 +758,8 @@ async function parseMessage(message, sessionId = null, source = 'web') {
         }
     }
 
-    // ใช้ ChatGPT หรือระบบออฟไลน์สำรอง
-    const aiResult = await callOpenAI(message, sessionId);
+    // ใช้ Gemini AI หรือระบบออฟไลน์สำรอง
+    const aiResult = await callGeminiAI(message, sessionId);
     const finalResponse = aiResult.success ? aiResult.message : 'สวัสดีค่ะ! 👋 ยินดีให้บริการร้าน It-Business ค่ะ\n\n📄 เรามีบริการถ่ายเอกสาร พิมพ์งาน และบริการอื่นๆ\n🤖 สามารถคำนวณราคาและสอบถามข้อมูลได้เลยค่ะ\n\nมีอะไรให้ช่วยไหมคะ?';
     
     // เก็บคำตอบลงใน memory
@@ -725,7 +812,8 @@ function generatePriceTable() {
     });
 
     // เพิ่มโปรโมชั่น
-    table += '\n🎉 โปรโมชั่นส่วนลด:\n';
+    table += '\n🎉 โปรโมชั่นพิเศษ:\n';
+    table += '• ถ่ายเอกสาร สี/ขาวดำ ทุกขนาด ไม่เกิน 5 แผ่น = 5 บาท/แผ่น 🌟\n';
     table += '• 100+ แผ่น ลด 25% 💥\n';
     table += '• 500+ แผ่น ลด 30% 🔥\n';
     table += '• 1000+ แผ่น ลด 35% 🎯\n\n';
@@ -1160,13 +1248,19 @@ app.get('/', (req, res) => {
                     <span>LINE Bot</span>
                 </div>
                 <div class="status-item">
-                    <div class="status-dot ${openaiApiKey ? 'status-connected' : 'status-disconnected'}"></div>
-                    <span>ChatGPT AI</span>
+                    <div class="status-dot ${geminiApiKey ? 'status-connected' : 'status-disconnected'}"></div>
+                    <span>Gemini AI</span>
                 </div>
             </div>
-            <div class="status-item">
-                <i class="fas fa-database"></i>
-                <span>${priceList.length} รายการราคา</span>
+            <div style="display: flex; gap: 15px;">
+                <div class="status-item">
+                    <i class="fas fa-database"></i>
+                    <span>${priceList.length} รายการราคา</span>
+                </div>
+                <div class="status-item">
+                    <i class="fas fa-users"></i>
+                    <span><span id="sessionCount">0</span> sessions</span>
+                </div>
             </div>
         </div>
 
@@ -1407,7 +1501,10 @@ app.get('/', (req, res) => {
                 try {
                     const response = await fetch('/api/memory-stats');
                     const data = await response.json();
-                    document.getElementById('sessionCount').textContent = data.sessionCount || 0;
+                    const sessionElement = document.getElementById('sessionCount');
+                    if (sessionElement) {
+                        sessionElement.textContent = data.sessionCount || 0;
+                    }
                 } catch (error) {
                     console.error('Error updating session count:', error);
                 }
@@ -1509,7 +1606,7 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'OK',
         prices: priceList.length,
-        ai: openaiApiKey ? 'ready (ChatGPT)' : 'ready (offline mode)',
+        ai: geminiApiKey ? 'ready (Gemini)' : 'ready (offline mode)',
         line: client ? 'connected' : 'not configured',
         memory: {
             active: true,
@@ -1615,7 +1712,7 @@ app.listen(port, () => {
 ========================================
 🚀 Server: http://localhost:${port}
 📊 Prices: ${priceList.length} items loaded
-🤖 AI: ${openaiApiKey ? 'Ready (ChatGPT)' : 'Ready (Offline Mode)'}
+🤖 AI: ${geminiApiKey ? 'Ready (Gemini)' : 'Ready (Offline Mode)'}
 📱 LINE: ${client ? 'Connected' : 'Not configured'}
 🧠 Memory: ${MAX_HISTORY_MESSAGES} messages per session, ${SESSION_TIMEOUT/60000} min timeout
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
