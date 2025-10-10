@@ -14,12 +14,30 @@ const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const channelSecret = process.env.LINE_CHANNEL_SECRET;
 const geminiApiKey = process.env.GEMINI_API_KEY;
 const port = process.env.PORT || 3000;
+const nodeEnv = process.env.NODE_ENV || 'development';
 
 console.log('Environment check:');
+console.log('- NODE_ENV:', nodeEnv);
 console.log('- LINE_CHANNEL_ACCESS_TOKEN:', channelAccessToken ? 'Set ✅' : 'Not set ❌');
 console.log('- LINE_CHANNEL_SECRET:', channelSecret ? 'Set ✅' : 'Not set ❌');
 console.log('- GEMINI_API_KEY:', geminiApiKey ? 'Set ✅' : 'Not set ❌');
 console.log('- PORT:', port);
+
+// Production environment validation
+if (nodeEnv === 'production') {
+    const requiredEnvVars = ['LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNEL_SECRET'];
+    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+        console.error('🚨 Missing required environment variables for production:');
+        missingVars.forEach(varName => console.error(`   - ${varName}`));
+        console.error('Please set these variables in Railway dashboard');
+    }
+    
+    if (!geminiApiKey) {
+        console.warn('⚠️  GEMINI_API_KEY not set - AI features will run in offline mode');
+    }
+}
 
 // LINE Bot Setup
 let client;
@@ -484,23 +502,50 @@ ${conversationHistory ? `ประวัติการสนทนา:\n${conve
 
 ตอบ:`;
 
-        const response = await fetch('https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=' + geminiApiKey, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{
-                        text: prompt
-                    }]
-                }],
-                generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 500,
+        // ลอง API endpoint หลายแบบเพื่อความแม่นยำ
+        const endpoints = [
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${geminiApiKey}`,
+            `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${geminiApiKey}`
+        ];
+
+        let response;
+        let lastError;
+
+        for (const endpoint of endpoints) {
+            try {
+                response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [{
+                                text: prompt
+                            }]
+                        }],
+                        generationConfig: {
+                            temperature: 0.7,
+                            maxOutputTokens: 500,
+                        }
+                    })
+                });
+
+                if (response.ok) {
+                    break; // หากสำเร็จ ให้หยุดลอง endpoint อื่น
+                } else {
+                    lastError = new Error(`API endpoint failed with status: ${response.status}`);
                 }
-            })
-        });
+            } catch (error) {
+                lastError = error;
+                continue; // ลอง endpoint ถัดไป
+            }
+        }
+
+        if (!response || !response.ok) {
+            throw lastError || new Error('All Gemini API endpoints failed');
+        }
 
         if (!response.ok) {
             throw new Error(`Gemini API request failed with status: ${response.status}`);
