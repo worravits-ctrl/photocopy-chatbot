@@ -56,7 +56,7 @@ if (channelAccessToken && channelSecret) {
 // ========== เพิ่มระบบจำการสนทนา ==========
 // Memory storage for conversations
 const conversationMemory = new Map();
-const MAX_HISTORY_MESSAGES = 5;
+const MAX_HISTORY_MESSAGES = 10; // จำประวัติการสนทนา 10 ข้อความ (10 pairs = 20 messages)
 const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
 // Function to add message to memory
@@ -823,12 +823,31 @@ async function parseMessage(message, sessionId = null, source = 'web') {
         }
     }
     
+    // ถ้าไม่พบขนาดในข้อความปัจจุบัน ให้ลองหาจากประวัติการสนทนา
+    if (!detectedSize && sessionId) {
+        const history = getConversationHistory(sessionId);
+        if (history) {
+            // ค้นหาขนาดกระดาษจากประวัติล่าสุด
+            const historyText = history.toLowerCase();
+            for (let [key, value] of Object.entries(paperSizes)) {
+                if (historyText.includes(key)) {
+                    detectedSize = value;
+                    break;
+                }
+            }
+        }
+    }
+    
     // ตรวจสอบคำถามเกี่ยวกับการถ่ายเอกสารโดยทั่วไป (ไม่ระบุขนาด)
-    if (hasNumber && (text.includes('ถ่าย') || text.includes('copy')) && !detectedSize) {
-        const numbers = message.match(/\d+/g);
-        const sheets = Math.max(...numbers.map(n => parseInt(n)));
+    if (hasNumber && (text.includes('ถ่าย') || text.includes('copy') || text.includes('แผ่น') || text.includes('เท่าไหร่')) && !detectedSize) {
+        // ลบเลขจากขนาดกระดาษ (a3, a4, a5) ก่อนนับจำนวนแผ่น
+        let messageForCount = text.replace(/a3|a4|a5/g, '');
+        const numbers = messageForCount.match(/\d+/g);
         
-        if (sheets > 0 && sheets <= 5) {
+        if (numbers && numbers.length > 0) {
+            const sheets = Math.max(...numbers.map(n => parseInt(n)));
+        
+            if (sheets > 0 && sheets <= 5) {
             // ราคาพิเศษ 5 บาท/แผ่น สำหรับไม่เกิน 5 แผ่น
             const specialPrice = sheets * 5;
             const result = {
@@ -856,16 +875,39 @@ async function parseMessage(message, sessionId = null, source = 'web') {
             
             return result;
         }
+        } // ปิด if (numbers && numbers.length > 0)
     }
     
     if (hasNumber && detectedSize) {
         let colorType = text.includes('สี') ? 'สี' : 'ขาวดำ';
         let printType = text.includes('หลัง') || text.includes('สองหน้า') ? 'หน้าหลัง' : 'หน้าเดียว';
         
-        const numbers = message.match(/\d+/g);
-        const sheets = Math.max(...numbers.map(n => parseInt(n)));
+        // ถ้าไม่พบประเภทในข้อความปัจจุบัน ให้ลองหาจากประวัติการสนทนา
+        if (!text.includes('สี') && !text.includes('ขาวดำ') && sessionId) {
+            const history = getConversationHistory(sessionId);
+            if (history) {
+                const historyText = history.toLowerCase();
+                if (historyText.includes('สี') && !historyText.includes('ขาวดำ')) {
+                    colorType = 'สี';
+                } else if (historyText.includes('ขาวดำ')) {
+                    colorType = 'ขาวดำ';
+                }
+                
+                // ตรวจสอบรูปแบบจากประวัติ
+                if (historyText.includes('หลัง') || historyText.includes('สองหน้า')) {
+                    printType = 'หน้าหลัง';
+                }
+            }
+        }
         
-        if (sheets > 0) {
+        // ลบเลขจากขนาดกระดาษ (a3, a4, a5) ก่อนนับจำนวนแผ่น
+        let messageForCount = text.replace(/a3|a4|a5/g, '');
+        const numbers = messageForCount.match(/\d+/g);
+        
+        if (numbers && numbers.length > 0) {
+            const sheets = Math.max(...numbers.map(n => parseInt(n)));
+        
+            if (sheets > 0) {
             const result = calculatePrice(detectedSize, colorType, printType, sheets);
             
             const finalResult = {
@@ -880,6 +922,7 @@ async function parseMessage(message, sessionId = null, source = 'web') {
             
             return finalResult;
         }
+        } // ปิด if (numbers && numbers.length > 0)
     }
 
     // ใช้ Gemini AI หรือระบบออฟไลน์สำรอง
