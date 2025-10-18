@@ -591,7 +591,7 @@ function getOfflineResponse(userMessage, sessionId = null) {
         message === 'โอเคครับ' || message === 'โอเคค่ะ' || message === 'โอเคนะครับ' || 
         message === 'ตกลง' || message === 'ตกลงครับ' || message === 'ตกลงค่ะ' ||
         message === 'ได้เลย' || message === 'ได้เลยครับ' || message === 'ได้เลยค่ะ' ||
-        message === 'เอาครับ' || message === 'เอาค่ะ' || message === 'คับ') {
+        message === 'เอาครับ' || message === 'เอาค่ะ' || message === 'ถูกค่ะ'|| message === 'ถูกครับ'|| message === 'คับ') {
         
         // ดึงประวัติการสนทนาเพื่อตอบตามบริบท
         let conversationContext = '';
