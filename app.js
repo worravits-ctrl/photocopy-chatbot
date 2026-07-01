@@ -247,13 +247,13 @@ function getCurrentDateInfo() {
     let shopHours = '';
     
     if (day >= 1 && day <= 5) { // Monday to Friday (จันทร์-ศุกร์)
-        // เวลา 08:00-17:00
-        isOpen = (hour >= 8 && hour < 17);
-        shopHours = '08:00-17:00';
+        // เวลา 09:00-16:30
+        isOpen = (hour >= 9 && (hour < 16 || (hour === 16 && minute < 30)));
+        shopHours = '09:00-16:30';
     } else if (day === 6) { // Saturday (เสาร์)
-        // เวลา 09:00-17:00
-        isOpen = (hour >= 9 && hour < 17);
-        shopHours = '09:00-17:00';
+        // เวลา 09:00-15:00
+        isOpen = (hour >= 9 && hour < 15);
+        shopHours = '09:00-15:00';
     } else { // Sunday (อาทิตย์)
         isOpen = false;
         shopHours = 'ปิด';
@@ -294,29 +294,31 @@ function getDetailedShopStatus() {
     if (dateInfo.isOpen) {
         // ร้านเปิดอยู่
         let closeTime = '';
-        if (dateInfo.day >= 1 && dateInfo.day <= 6) {
-            closeTime = '17:00';
+        if (dateInfo.day >= 1 && dateInfo.day <= 5) {
+            closeTime = '16:30';
+        } else if (dateInfo.day === 6) {
+            closeTime = '15:00';
         }
         statusMessage = `🟢 ร้านเปิดอยู่ (ปิดเวลา ${closeTime} น.)`;
     } else {
         // ร้านปิด - คำนวณเวลาเปิดครั้งต่อไป
         if (dateInfo.day === 0) { // อาทิตย์
-            nextOpenTime = 'จันทร์ 08:00 น.';
-        } else if (dateInfo.day === 6 && dateInfo.hour >= 17) { // เสาร์หลัง 17:00
-            nextOpenTime = 'จันทร์ 08:00 น.';
+            nextOpenTime = 'จันทร์ 09:00 น.';
+        } else if (dateInfo.day === 6 && dateInfo.hour >= 15) { // เสาร์หลัง 15:00
+            nextOpenTime = 'จันทร์ 09:00 น.';
         } else if (dateInfo.day >= 1 && dateInfo.day <= 5) {
             // จันทร์-ศุกร์
-            if (dateInfo.hour < 8) {
-                nextOpenTime = `วันนี้ 08:00 น.`;
+            if (dateInfo.hour < 9) {
+                nextOpenTime = `วันนี้ 09:00 น.`;
             } else {
-                nextOpenTime = 'พรุ่งนี้ 08:00 น.';
+                nextOpenTime = 'พรุ่งนี้ 09:00 น.';
             }
         } else if (dateInfo.day === 6) {
             // เสาร์
             if (dateInfo.hour < 9) {
                 nextOpenTime = `วันนี้ 09:00 น.`;
             } else {
-                nextOpenTime = 'จันทร์ 08:00 น.';
+                nextOpenTime = 'จันทร์ 09:00 น.';
             }
         }
         statusMessage = `🔴 ร้านปิด (เปิดอีกครั้ง: ${nextOpenTime})`;
@@ -358,7 +360,7 @@ function getBusinessContext(sessionId = null) {
 - ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี 84000
 - โทรศัพท์: 093-5799850
 - LINE ID: เบอร์ร้าน
-- เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00, อาทิตย์ ปิด
+- เวลาทำการ: จันทร์-ศุกร์ 09:00-16:30, เสาร์ 09:00-15:00, อาทิตย์ ปิด
 - เจ้าของร้าน: พี่เวฟ
 - พ่อเจ้าของร้าน: ลุงเดียร์
 - จุดสังเกต: ใกล้ TheHub Hotel, Central Plaza, ในบริเวณสถานีขนส่งสุราษฎร์ธานี
@@ -480,7 +482,7 @@ async function callGeminiAI(userMessage, sessionId = null) {
 
 ข้อมูลร้าน:
 - เบอร์โทร: 093-5799850
-- เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00, วันอาทิตย์ ปิด
+- เวลาทำการ: จันทร์-ศุกร์ 09:00-16:30, เสาร์ 09:00-15:00, วันอาทิตย์ ปิด
 
 โปรโมชั่นปัจจุบัน:
 🌟 ราคาพิเศษ: ถ่ายเอกสาร ≤ 5 แผ่น = 5 บาท/แผ่น
@@ -603,7 +605,7 @@ function getOfflineResponse(userMessage, sessionId = null) {
         
         return {
             success: true,
-            message: `ok รับทราบค่ะ ยินดีต้อนรับนะคะ 😊\n\n🕘 เวลาทำการร้าน:\n• จันทร์ - ศุกร์: 08:00 - 17:00 น.\n• เสาร์: 09:00 - 17:00 น.\n• อาทิตย์: ปิด\n\n⏰ เวลาปัจจุบัน: ${shopStatus.time} น.\n📅 วันนี้: ${shopStatus.currentDay}\n\n📍 ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี\n📞 โทรสอบถาม: 093-5799850`
+            message: `ok รับทราบค่ะ ยินดีต้อนรับนะคะ 😊\n\n🕘 เวลาทำการร้าน:\n• จันทร์ - ศุกร์: 09:00 - 16:30 น.\n• เสาร์: 09:00 - 15:00 น.\n• อาทิตย์: ปิด\n\n⏰ เวลาปัจจุบัน: ${shopStatus.time} น.\n📅 วันนี้: ${shopStatus.currentDay}\n\n📍 ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี\n📞 โทรสอบถาม: 093-5799850`
         };
     }
     
@@ -652,12 +654,12 @@ function getOfflineResponse(userMessage, sessionId = null) {
         if (shopStatus.isOpen) {
             return {
                 success: true,
-                message: `✅ ร้านเปิดอยู่ค่ะ เข้ามาใช้บริการได้เลยค่ะ 😊\n\n⏰ เวลาปัจจุบัน: ${shopStatus.time} น.\n📅 วันนี้: ${shopStatus.date}\n\n🕘 เวลาทำการ:\n• จันทร์ - ศุกร์: 08:00 - 17:00\n• เสาร์: 09:00 - 17:00\n• อาทิตย์: ปิด\n\n� ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี\n�📞 โทรสอบถาม: 093-5799850`
+                message: `✅ ร้านเปิดอยู่ค่ะ เข้ามาใช้บริการได้เลยค่ะ 😊\n\n⏰ เวลาปัจจุบัน: ${shopStatus.time} น.\n📅 วันนี้: ${shopStatus.date}\n\n🕘 เวลาทำการ:\n• จันทร์ - ศุกร์: 09:00 - 16:30\n• เสาร์: 09:00 - 15:00\n• อาทิตย์: ปิด\n\n� ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี\n�📞 โทรสอบถาม: 093-5799850`
             };
         } else {
             return {
                 success: true,
-                message: `❌ ${shopStatus.statusMessage}\n\n⏰ เวลาปัจจุบัน: ${shopStatus.time} น.\n📅 วันนี้: ${shopStatus.date}\n\n🕘 เวลาทำการ:\n• จันทร์ - ศุกร์: 08:00 - 17:00\n• เสาร์: 09:00 - 17:00\n• อาทิตย์: ปิด\n\n📞 โทรสอบถาม: 093-5799850\n📍 ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี`
+                message: `❌ ${shopStatus.statusMessage}\n\n⏰ เวลาปัจจุบัน: ${shopStatus.time} น.\n📅 วันนี้: ${shopStatus.date}\n\n🕘 เวลาทำการ:\n• จันทร์ - ศุกร์: 09:00 - 16:30\n• เสาร์: 09:00 - 15:00\n• อาทิตย์: ปิด\n\n📞 โทรสอบถาม: 093-5799850\n📍 ที่อยู่: 136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี`
             };
         }
     }
@@ -675,7 +677,7 @@ function getOfflineResponse(userMessage, sessionId = null) {
         message.includes('แผนที่') || message.includes('map')) {
         return {
             success: true,
-            message: '📍 ที่อยู่ร้าน It_Business:\n136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี 84000\n\n📞 โทรศัพท์: 093-5799850\n💬 LINE ID: เบอร์ร้าน\n\n🗺️ จุดสังเกต:\n• ใกล้ TheHub Hotel\n• ใกล้ Central Plaza\n• ในบริเวณสถานีขนส่งสุราษฎร์ธานี\n\n🕘 เวลาทำการ:\n• จันทร์-ศุกร์: 08:00-17:00\n• เสาร์: 09:00-17:00\n• อาทิตย์: ปิด'
+            message: '📍 ที่อยู่ร้าน It_Business:\n136/2 หมู่10 ตำบลวัดประดู่ อ.เมือง จ.สุราษฎร์ธานี 84000\n\n📞 โทรศัพท์: 093-5799850\n💬 LINE ID: เบอร์ร้าน\n\n🗺️ จุดสังเกต:\n• ใกล้ TheHub Hotel\n• ใกล้ Central Plaza\n• ในบริเวณสถานีขนส่งสุราษฎร์ธานี\n\n🕘 เวลาทำการ:\n• จันทร์-ศุกร์: 09:00-16:30\n• เสาร์: 09:00-15:00\n• อาทิตย์: ปิด'
         };
     }
     
@@ -716,7 +718,7 @@ function getOfflineResponse(userMessage, sessionId = null) {
         message.includes('เคลือบบัตร') || message.includes('เคลือบ') || message.includes('ลามิเนต')) {
         
         // สร้างข้อความบริการ + ตารางราคา
-        const serviceList = `🖨️ บริการของเรา It_Business:\n\n• ถ่ายเอกสาร ขาวดำ/สี\n• เคลือบบัตร\n• พิมพ์งานจาก LINE/Email\n• พิมพ์เอกสาร\n• สแกนเอกสาร\n• เข้าเล่มเอกสาร\n• ลามิเนต\n• บริการอื่นๆ ตามต้องการ\n\n⏰ เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00\n📞 สอบถาม: 093-5799850\n\n`;
+        const serviceList = `🖨️ บริการของเรา It_Business:\n\n• ถ่ายเอกสาร ขาวดำ/สี\n• เคลือบบัตร\n• พิมพ์งานจาก LINE/Email\n• พิมพ์เอกสาร\n• สแกนเอกสาร\n• เข้าเล่มเอกสาร\n• ลามิเนต\n• บริการอื่นๆ ตามต้องการ\n\n⏰ เวลาทำการ: จันทร์-ศุกร์ 09:00-16:30, เสาร์ 09:00-15:00\n📞 สอบถาม: 093-5799850\n\n`;
         
         // เพิ่มตารางราคา
         let priceTable = '📋 ตารางราคาการถ่ายเอกสาร:\n\n';
@@ -749,7 +751,7 @@ function getOfflineResponse(userMessage, sessionId = null) {
     if (!shopStatus.isOpen) {
         return {
             success: true,
-            message: `ขณะนี้ร้านปิดให้ติดต่อมาใหม่ในเวลาทำการของร้านค่ะ\n\n🕘 เวลาทำการ:\n• จันทร์ - ศุกร์: 08:00 - 17:00 น.\n• เสาร์: 09:00 - 17:00 น.\n• อาทิตย์: ปิด\n\n⏰ เวลาปัจจุบัน: ${shopStatus.time} น.\n📅 วันนี้: ${shopStatus.currentDay}\n\n📞 โทรสอบถาม: 093-5799850`
+            message: `ขณะนี้ร้านปิดให้ติดต่อมาใหม่ในเวลาทำการของร้านค่ะ\n\n🕘 เวลาทำการ:\n• จันทร์ - ศุกร์: 09:00 - 16:30 น.\n• เสาร์: 09:00 - 15:00 น.\n• อาทิตย์: ปิด\n\n⏰ เวลาปัจจุบัน: ${shopStatus.time} น.\n📅 วันนี้: ${shopStatus.currentDay}\n\n📞 โทรสอบถาม: 093-5799850`
         };
     }
     
@@ -804,7 +806,7 @@ async function parseMessage(message, sessionId = null, source = 'web') {
         if (text.includes('เปิด') || text.includes('ปิด') || text.includes('ทำการ')) {
             const dateInfo = getCurrentDateInfo();
             response += `\n\n🏪 ร้าน${dateInfo.isOpen ? 'เปิดอยู่' : 'ปิดแล้ว'}`;
-            response += `\n⏰ เวลาทำการ: จันทร์-ศุกร์ 08:00-17:00, เสาร์ 09:00-17:00`;
+            response += `\n⏰ เวลาทำการ: จันทร์-ศุกร์ 09:00-16:30, เสาร์ 09:00-15:00`;
         }
         
         const result = {
@@ -1549,8 +1551,8 @@ app.get('/', (req, res) => {
                     <i class="fas fa-store status-icon"></i>
                     <div id="statusText">กำลังตรวจสอบ...</div>
                     <div style="font-size: 12px; margin-top: 5px;">
-                        จ-ศ 08:00-17:00<br>
-                        เสาร์ 09:00-17:00
+                        จ-ศ 09:00-16:30<br>
+                        เสาร์ 09:00-15:00
                     </div>
                 </div>
             </div>
