@@ -86,18 +86,17 @@ code .
 
 **`.env.example`**
 ```env
-# LINE Bot Configuration
-LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token_here
-LINE_CHANNEL_SECRET=your_channel_secret_here
+# Optional configuration for local development or Railway environment variables
 
-# Gemini AI Configuration  
-GEMINI_API_KEY=your_gemini_api_key_here
+# LINE Bot configuration (optional)
+LINE_CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
+LINE_CHANNEL_SECRET=your_line_channel_secret
 
-# Server Configuration
-PORT=3000
+# Gemini AI configuration (optional)
+GEMINI_API_KEY=your_gemini_api_key
+
+# Railway sets PORT automatically, do not override this value in Railway
 NODE_ENV=development
-
-# Timezone
 TZ=Asia/Bangkok
 ```
 
