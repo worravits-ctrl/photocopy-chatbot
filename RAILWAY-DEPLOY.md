@@ -30,11 +30,10 @@ LINE Bot สำหรับคำนวณราคาถ่ายเอกส�
 LINE_CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
 LINE_CHANNEL_SECRET=your_line_channel_secret
 
-# Optional for AI features  
+# Optional for AI features
 GEMINI_API_KEY=your_gemini_api_key
 
-# Auto-set by Railway
-PORT=3000
+# Railway automatically provides PORT, do not override it manually
 NODE_ENV=production
 ```
 
